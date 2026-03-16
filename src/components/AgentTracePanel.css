@@ -1,0 +1,111 @@
+.agent-trace-panel {
+  margin-top: 10px;
+  border: 1px solid rgba(87, 201, 255, 0.22);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.agent-trace-panel.compact {
+  margin-top: 0;
+}
+
+.agent-trace-head,
+.agent-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.agent-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 11px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--text);
+}
+
+.agent-pill.primary {
+  background: rgba(87, 201, 255, 0.16);
+  border-color: rgba(87, 201, 255, 0.3);
+}
+
+.agent-meta-row {
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.agent-section {
+  margin-top: 12px;
+}
+
+.agent-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.agent-tool-list,
+.agent-citation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agent-tool-item,
+.agent-citation-item,
+.agent-memory-box {
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  padding: 10px;
+}
+
+.agent-tool-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.agent-tool-name,
+.agent-citation-source {
+  font-weight: 700;
+}
+
+.agent-tool-status {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  background: rgba(43, 210, 182, 0.15);
+  border: 1px solid rgba(43, 210, 182, 0.3);
+}
+
+.agent-tool-status.error {
+  background: rgba(255, 107, 107, 0.15);
+  border-color: rgba(255, 107, 107, 0.35);
+}
+
+.agent-tool-time,
+.agent-citation-score,
+.agent-tool-args,
+.agent-tool-summary,
+.agent-citation-text,
+.agent-memory-box {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+}
