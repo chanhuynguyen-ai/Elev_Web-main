@@ -1,8 +1,9 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useMemo, useState, useRef, useCallback } from 'react';
 import BotOrb from '../components/BotOrb';
+import AgentTracePanel from '../components/AgentTracePanel';
 import { useToast } from '../components/Toast';
 import { speak, cancelSpeech, voiceChatOnce } from '../services/speech';
-import { fetchChatAbortable, resetAgentSessionId } from '../services/api';
+import { fetchChatAbortable, getAgentSessionId, resetAgentSessionId } from '../services/api';
 import './Assistant.css';
 
 function parseLocalFloorIntent(text) {
@@ -15,12 +16,18 @@ function parseLocalFloorIntent(text) {
 export default function Assistant() {
   const showToast = useToast();
   const [messages, setMessages] = useState([
-    { who: 'bot', text: 'Xin chào, tôi là Sunybot. Tôi có thể hỗ trợ gọi tầng, kiểm tra trạng thái và hướng dẫn sử dụng thang máy.' },
+    {
+      id: 'boot-message',
+      who: 'bot',
+      text: 'Xin chào, tôi là Sunybot Agent. Tôi có thể hỗ trợ gọi tầng, kiểm tra trạng thái, tra cứu tri thức và giải thích các thao tác kỹ thuật.',
+      agent: null,
+    },
   ]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [botMode, setBotMode] = useState('idle');
   const [stateText, setStateText] = useState('Sẵn sàng giao tiếp.');
+  const [sessionId, setSessionId] = useState(() => getAgentSessionId());
   const abortRef = useRef(null);
   const chatEndRef = useRef(null);
 
@@ -28,8 +35,8 @@ export default function Assistant() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   };
 
-  const addMessage = useCallback((text, who) => {
-    setMessages((prev) => [...prev, { who, text }]);
+  const addMessage = useCallback((message) => {
+    setMessages((prev) => [...prev, { id: `${Date.now()}-${Math.random()}`, ...message }]);
     setTimeout(scrollToBottom, 50);
   }, []);
 
@@ -54,37 +61,36 @@ export default function Assistant() {
       abortRef.current = null;
     }
 
-    addMessage(text, 'user');
+    addMessage({ who: 'user', text, agent: null });
     setInput('');
     setBusy(true);
     setBotMode('speaking');
-    setStateText('Đang trả lời...');
+    setStateText('Agent đang phân tích câu hỏi...');
 
     const controller = new AbortController();
     abortRef.current = controller;
 
     try {
-      const data = await fetchChatAbortable(text, controller.signal);
+      const data = await fetchChatAbortable(text, controller.signal, { session_id: sessionId });
       syncLocalFloor(text, data);
-      addMessage(data.answer || '...', 'bot');
-      setStateText('Đã trả lời.');
-      if (data.requires_human) {
-        showToast('Sunybot đề xuất chuyển tiếp cho nhân viên hỗ trợ.');
-      }
+      addMessage({ who: 'bot', text: data.answer || '...', agent: data });
+      setSessionId(data.session_id || sessionId);
+      setStateText(`Đã trả lời · intent: ${data.intent || 'general'}`);
+      if (data.requires_human) showToast('Agent khuyến nghị chuyển cho người hỗ trợ.');
       speak(data.answer || '');
     } catch (e) {
       if (e && (e.name === 'AbortError' || String(e).includes('AbortError'))) {
-        setStateText('Đã hủy.');
+        setStateText('Đã hủy truy vấn.');
       } else {
-        addMessage('Sunybot hiện không thể trả lời.', 'bot');
-        setStateText('Lỗi kết nối.');
+        addMessage({ who: 'bot', text: 'Sunybot Agent hiện không thể trả lời. Vui lòng kiểm tra backend.', agent: null });
+        setStateText('Lỗi kết nối agent.');
       }
     } finally {
       abortRef.current = null;
       setBusy(false);
       setBotMode('idle');
     }
-  }, [addMessage, showToast, syncLocalFloor]);
+  }, [addMessage, sessionId, showToast, syncLocalFloor]);
 
   const handleStop = () => {
     cancelSpeech();
@@ -113,28 +119,36 @@ export default function Assistant() {
     );
   };
 
-  const handleResetConversation = () => {
-    resetAgentSessionId();
+  const handleNewSession = () => {
+    const next = resetAgentSessionId();
+    setSessionId(next);
     setMessages([
-      { who: 'bot', text: 'Xin chào, tôi là Sunybot. Bạn cần tôi hỗ trợ gì trong thang máy?' },
+      {
+        id: 'new-session',
+        who: 'bot',
+        text: 'Đã tạo phiên agent mới. Bạn có thể bắt đầu hội thoại mà không dùng lại ngữ cảnh cũ.',
+        agent: null,
+      },
     ]);
-    setStateText('Cuộc trò chuyện mới đã sẵn sàng.');
-    showToast('Đã làm mới cuộc trò chuyện');
+    setStateText('Phiên mới đã sẵn sàng.');
+    showToast('Đã tạo session agent mới');
   };
 
-  const quickChips = [
+  const quickChips = useMemo(() => [
     { label: 'Gọi tầng 7', text: 'Gọi tôi lên tầng 7' },
     { label: 'Tầng hiện tại', text: 'Thang đang ở tầng mấy?' },
     { label: 'Trạng thái cửa', text: 'Cửa đang mở hay đóng?' },
     { label: 'Kiểm tra tải', text: 'Tình trạng quá tải?' },
-    { label: 'Hướng dẫn khẩn cấp', text: 'Nếu bị kẹt trong thang máy thì phải làm gì?' },
-  ];
+    { label: 'Hướng dẫn kẹt thang', text: 'Nếu bị kẹt trong thang máy thì phải làm gì?' },
+  ], []);
+
+  const lastAgent = [...messages].reverse().find((m) => m.who === 'bot' && m.agent)?.agent || null;
 
   return (
     <div>
       <div className="page-title">
         <h1>Trợ lý ảo</h1>
-        <div className="meta">Chat bằng giọng nói hoặc bàn phím</div>
+        <div className="meta">Chat bằng giọng nói hoặc bàn phím · Agent session <span className="mono session-inline">{sessionId}</span></div>
       </div>
 
       <div className="grid-2 assistant-grid">
@@ -143,12 +157,15 @@ export default function Assistant() {
             <div className="chat-box">
               <div className="assistant-topbar">
                 <div className="assistant-status-text">{stateText}</div>
-                <button className="btn btn-ghost btn-xs-inline" onClick={handleResetConversation}>Bắt đầu lại</button>
+                <button className="btn btn-ghost btn-xs-inline" onClick={handleNewSession}>Phiên mới</button>
               </div>
 
               <div className="chat-messages">
-                {messages.map((m, i) => (
-                  <div key={`${m.who}-${i}`} className={`bubble ${m.who}`}>{m.text}</div>
+                {messages.map((m) => (
+                  <div key={m.id} className={`message-card ${m.who}`}>
+                    <div className={`bubble ${m.who}`}>{m.text}</div>
+                    {m.who === 'bot' && m.agent ? <AgentTracePanel data={m.agent} /> : null}
+                  </div>
                 ))}
                 <div ref={chatEndRef} />
               </div>
@@ -170,22 +187,33 @@ export default function Assistant() {
             </div>
 
             <div className="card agent-side-card">
-              <h3>Gợi ý nhanh</h3>
+              <h3>Câu hỏi mẫu</h3>
               <div className="chips">
                 {quickChips.map((c) => (
                   <div key={c.label} className="chip" onClick={() => doSend(c.text)}>{c.label}</div>
                 ))}
               </div>
-              <div className="assistant-help-card">
-                <h4>Sunybot có thể giúp gì?</h4>
-                <div className="muted">Gọi tầng, kiểm tra trạng thái, hướng dẫn an toàn và giải thích các thao tác cơ bản của thang máy.</div>
+
+              <div className="assistant-side-block">
+                <h4>Phiên hiện tại</h4>
+                <div className="muted mono">{sessionId}</div>
               </div>
+
+              {lastAgent ? (
+                <div className="assistant-side-block">
+                  <h4>Tóm tắt agent gần nhất</h4>
+                  <div className="muted">Intent: <b>{lastAgent.intent || 'general'}</b></div>
+                  <div className="muted">Tool used: <b>{lastAgent.tool_trace?.length || 0}</b></div>
+                  <div className="muted">Citations: <b>{lastAgent.citations?.length || 0}</b></div>
+                  {lastAgent.memory_summary ? <div className="assistant-memory-preview">{lastAgent.memory_summary}</div> : null}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
 
         <div className="panel suny">
-          <BotOrb mode={botMode} title="Sunybot" stateText={stateText} />
+          <BotOrb mode={botMode} title="Sunybot Agent" stateText={stateText} />
         </div>
       </div>
     </div>

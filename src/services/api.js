@@ -1,9 +1,16 @@
-/* ===== SUNYBOT AGENT API SERVICE ===== */
+/* ===== SUNYBOT AGENT + REALTIME INTEGRATION API SERVICE ===== */
 
 const SESSION_KEY = 'sunybot_agent_session_id';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+
+function buildUrl(path) {
+  if (!API_BASE_URL) return path;
+  if (!path.startsWith('/')) return `${API_BASE_URL}/${path}`;
+  return `${API_BASE_URL}${path}`;
+}
 
 function randomId() {
-  if (typeof window !== 'undefined' && window.crypto?.randomUUID) return window.crypto.randomUUID();
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
   return `suny-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
@@ -46,8 +53,14 @@ async function parseJsonSafe(response) {
 
 function normalizeCitation(citation, idx) {
   if (!citation) {
-    return { id: `cit-${idx}`, source: 'knowledge_base', content: '', score: null };
+    return {
+      id: `cit-${idx}`,
+      source: 'knowledge_base',
+      content: '',
+      score: null,
+    };
   }
+
   return {
     id: citation.id || `cit-${idx}`,
     source: citation.source || citation.title || 'knowledge_base',
@@ -67,6 +80,7 @@ function normalizeToolTrace(trace, idx) {
       summary: '',
     };
   }
+
   return {
     id: trace.id || `tool-${idx}`,
     tool_name: trace.tool_name || trace.tool || 'unknown_tool',
@@ -78,39 +92,53 @@ function normalizeToolTrace(trace, idx) {
 }
 
 export function normalizeAgentResponse(raw = {}, fallbackMessage = '') {
-  const answer = raw.answer || raw.response || raw.final_answer || raw.message || 'Sunybot chưa có phản hồi.';
+  const answer =
+    raw.answer ||
+    raw.response ||
+    raw.final_answer ||
+    raw.message ||
+    'Sunybot chưa có phản hồi.';
+
   const normalized = {
     answer,
     source: raw.source || 'agent',
     intent: raw.intent || null,
     confidence: typeof raw.confidence === 'number' ? raw.confidence : null,
     session_id: raw.session_id || getAgentSessionId(),
-    tool_trace: Array.isArray(raw.tool_trace) ? raw.tool_trace.map(normalizeToolTrace) : [],
-    citations: Array.isArray(raw.citations) ? raw.citations.map(normalizeCitation) : [],
+    tool_trace: Array.isArray(raw.tool_trace)
+      ? raw.tool_trace.map(normalizeToolTrace)
+      : [],
+    citations: Array.isArray(raw.citations)
+      ? raw.citations.map(normalizeCitation)
+      : [],
     memory_summary: raw.memory_summary || '',
     requires_human: Boolean(raw.requires_human),
     status: raw.status || 'ok',
     request_message: fallbackMessage,
     raw,
   };
+
   saveAgentSessionId(normalized.session_id);
   return normalized;
 }
 
-async function requestJson(url, options = {}) {
-  const response = await fetch(url, options);
+async function requestJson(path, options = {}) {
+  const response = await fetch(buildUrl(path), options);
   const data = await parseJsonSafe(response);
+
   if (!response.ok) {
     const err = new Error(data?.error || data?.detail || `HTTP ${response.status}`);
     err.status = response.status;
     err.payload = data;
     throw err;
   }
+
   return data;
 }
 
 async function requestFirstSuccess(attempts = []) {
   let lastError = null;
+
   for (const attempt of attempts) {
     try {
       return await requestJson(attempt.url, attempt.options);
@@ -118,6 +146,7 @@ async function requestFirstSuccess(attempts = []) {
       lastError = err;
     }
   }
+
   throw lastError || new Error('Không thể kết nối backend');
 }
 
@@ -129,20 +158,25 @@ export async function fetchChatAbortable(message, signal, extra = {}) {
     employee_id: extra.employee_id || '',
     employee_name: extra.employee_name || '',
   };
+
   const data = await requestJson('/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
     signal,
   });
+
   return normalizeAgentResponse(data, message);
 }
 
 const api = {
+  /* ===== CORE SYSTEM ===== */
   elevatorStatus: () => requestJson('/api/elevator/status'),
   weather: () => requestJson('/api/weather'),
   agentStatus: () => requestJson('/status'),
+  health: () => requestJson('/health'),
 
+  /* ===== CHAT / LLM ===== */
   chat: async (message, extra = {}) => {
     const payload = {
       message,
@@ -151,15 +185,23 @@ const api = {
       employee_id: extra.employee_id || '',
       employee_name: extra.employee_name || '',
     };
+
     const data = await requestJson('/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+
     return normalizeAgentResponse(data, message);
   },
 
-  command: async ({ elevator_id = 1, from_floor = null, target_floor = null, direction = 'up' } = {}) => {
+  /* ===== ELEVATOR COMMAND ===== */
+  command: async ({
+    elevator_id = 1,
+    from_floor = null,
+    target_floor = null,
+    direction = 'up',
+  } = {}) => {
     return requestFirstSuccess([
       {
         url: '/command',
@@ -188,6 +230,7 @@ const api = {
     return result;
   },
 
+  /* ===== SOS ===== */
   sos: async (payload = {}) => {
     return requestFirstSuccess([
       {
@@ -212,46 +255,63 @@ const api = {
     ]);
   },
 
-  adminMysql: {
-    async connect(payload) {
-      return requestJson('/api/admin/mysql/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    },
+  /* ===== CV INTEGRATION ===== */
+  cvConfig: () => requestJson('/api/integration/cv/config'),
+  cvStatus: () => requestJson('/api/integration/cv/status'),
+  cvEvents: (limit = 20) =>
+    requestJson(`/api/integration/cv/events?limit=${encodeURIComponent(limit)}`),
+  cvDensity: (days = 7) =>
+    requestJson(`/api/integration/cv/density?days=${encodeURIComponent(days)}`),
+  cvStreamUrl: () => requestJson('/api/integration/cv/stream-url'),
 
-    async useDb(payload) {
-      return requestJson('/api/admin/mysql/use-db', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    },
+  unknownFaceCandidates: (limit = 10) =>
+    requestJson(`/api/integration/cv/unknown-candidates?limit=${encodeURIComponent(limit)}`),
 
-    async tables({ connection_id, database }) {
-      const params = new URLSearchParams();
-      if (connection_id) params.set('connection_id', String(connection_id));
-      if (database) params.set('database', String(database));
-      return requestJson(`/api/admin/mysql/tables?${params.toString()}`);
-    },
-
-    async table({ connection_id, database, table }) {
-      const params = new URLSearchParams();
-      if (connection_id) params.set('connection_id', String(connection_id));
-      if (database) params.set('database', String(database));
-      if (table) params.set('table', String(table));
-      return requestJson(`/api/admin/mysql/table?${params.toString()}`);
-    },
-
-    async saveTable(payload) {
-      return requestJson('/api/admin/mysql/save-table', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    },
+  registerFace: async (payload) => {
+    return requestFirstSuccess([
+      {
+        url: '/api/integration/cv/register-face',
+        options: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        },
+      },
+      {
+        url: '/api/cv/register-face',
+        options: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        },
+      },
+    ]);
   },
+
+  /* ===== DATA MANAGER ===== */
+  dataCatalog: () => requestJson('/api/integration/data/catalog'),
+
+  dataTables: (database) =>
+    requestJson(`/api/integration/data/tables?database=${encodeURIComponent(database)}`),
+
+  dataTable: (database, table, limit = 50, offset = 0) =>
+    requestJson(
+      `/api/integration/data/table?database=${encodeURIComponent(database)}&table=${encodeURIComponent(table)}&limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`
+    ),
+
+  saveDataRow: (database, table, row) =>
+    requestJson('/api/integration/data/row/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ database, table, row }),
+    }),
+
+  deleteDataRow: (database, table, keys) =>
+    requestJson('/api/integration/data/row/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ database, table, keys }),
+    }),
 };
 
 export default api;

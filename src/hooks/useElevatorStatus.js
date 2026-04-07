@@ -1,58 +1,72 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import api from '../services/api';
+
+const DEFAULT_STATUS = {
+  elevator_id: 1,
+  floor: '--',
+  direction: '--',
+  door: '--',
+  people_count: '--',
+  overload: false,
+  status: 'UNKNOWN',
+  time: '--:--:--',
+  source: 'frontend_default',
+  error: null,
+};
+
+function normalizeStatus(payload = {}) {
+  const nowText = new Date().toLocaleTimeString('vi-VN');
+
+  return {
+    elevator_id: payload.elevator_id ?? 1,
+    floor: payload.floor ?? '--',
+    direction: payload.direction ?? '--',
+    door: payload.door ?? '--',
+    people_count: payload.people_count ?? '--',
+    overload: Boolean(payload.overload),
+    status: payload.status || 'UNKNOWN',
+    time: payload.time || nowText,
+    source: payload.source || 'backend',
+    error: payload.error || null,
+  };
+}
 
 export default function useElevatorStatus(intervalMs = 1000) {
-    const [status, setStatus] = useState({
-        floor: '--',
-        direction: '--',
-        door: '--',
-        people_count: '--',
-        time: '--:--:--',
-        overload: false,
-    });
+  const [status, setStatus] = useState(DEFAULT_STATUS);
 
-    useEffect(() => {
-        let active = true;
+  useEffect(() => {
+    let alive = true;
+    let timerId = null;
 
-        // Initialize defaults if not present
-        if (!localStorage.getItem('lift_current')) localStorage.setItem('lift_current', '1');
-        if (!localStorage.getItem('lift_target')) localStorage.setItem('lift_target', '1');
+    const loadStatus = async () => {
+      try {
+        const data = await api.elevatorStatus();
+        if (!alive) return;
 
-        const simulate = () => {
-            if (!active) return;
+        setStatus((prev) => ({
+          ...prev,
+          ...normalizeStatus(data),
+        }));
+      } catch (err) {
+        if (!alive) return;
 
-            // Read shared state
-            let current = parseInt(localStorage.getItem('lift_current') || '1');
-            let target = parseInt(localStorage.getItem('lift_target') || '1');
-            const lastMove = parseInt(localStorage.getItem('lift_last_move') || '0');
-            const now = Date.now();
-            
-            let direction = 'STOP';
-            if (target > current) direction = 'UP';
-            else if (target < current) direction = 'DOWN';
+        setStatus((prev) => ({
+          ...prev,
+          time: new Date().toLocaleTimeString('vi-VN'),
+          source: 'backend_error',
+          error: err?.message || 'Không thể lấy trạng thái thang máy',
+        }));
+      }
+    };
 
-            // Move logic: 1 floor every 2 seconds
-            if (direction !== 'STOP' && (now - lastMove > 2000)) {
-                if (direction === 'UP') current++;
-                else current--;
-                
-                localStorage.setItem('lift_current', current);
-                localStorage.setItem('lift_last_move', now);
-            }
+    loadStatus();
+    timerId = setInterval(loadStatus, Math.max(500, intervalMs));
 
-            setStatus({
-                floor: current,
-                direction: direction,
-                door: direction === 'STOP' ? 'OPEN' : 'CLOSED',
-                people_count: Math.floor(Math.random() * 8), // Simulated
-                time: new Date().toLocaleTimeString('vi-VN'),
-                overload: false,
-            });
-        };
+    return () => {
+      alive = false;
+      if (timerId) clearInterval(timerId);
+    };
+  }, [intervalMs]);
 
-        simulate();
-        const id = setInterval(simulate, 500); // Check fast for smooth UI updates
-        return () => { active = false; clearInterval(id); };
-    }, []);
-
-    return status;
+  return status;
 }
