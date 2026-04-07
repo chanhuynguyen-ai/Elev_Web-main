@@ -1,245 +1,399 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Html5Qrcode } from 'html5-qrcode';
 import { useToast } from '../components/Toast';
 import api from '../services/api';
+import {
+  appendMaintenanceTimeline,
+  getFloorAuthConfig,
+  getFloorPins,
+  getLockedFloors,
+  isQrAuthorizedForFloor,
+  parseQrPayload,
+  setLockedFloors,
+  subscribeAccessChange,
+} from '../utils/elevatorAccess';
 import './CallFloor.css';
 
-const FLOORS = Array.from({ length: 15 }, (_, i) => i + 1);
+const FLOORS = Array.from({ length: 15 }, (_, index) => index + 1);
+const QR_REGION_ID = 'call-floor-qr-reader';
+
+function readAccessState() {
+  return {
+    lockedFloors: getLockedFloors(),
+    authConfig: getFloorAuthConfig(),
+    floorPins: getFloorPins(),
+  };
+}
 
 export default function CallFloor() {
-    const showToast = useToast();
-    const [selectedFloors, setSelectedFloors] = useState([]);
-    const [pressed, setPressed] = useState(null);
-    const [showPinModal, setShowPinModal] = useState(false);
-    const [authStep, setAuthStep] = useState('pin');
-    const [authOptions, setAuthOptions] = useState({ pin: true, face: false });
-    const [pinTarget, setPinTarget] = useState(null);
-    const [pin, setPin] = useState('');
-    const [pinError, setPinError] = useState('');
-    const videoRef = useRef(null);
-    const [cameraStream, setCameraStream] = useState(null);
+  const showToast = useToast();
+  const [selectedFloors, setSelectedFloors] = useState([]);
+  const [pressed, setPressed] = useState(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authStep, setAuthStep] = useState('pin');
+  const [authOptions, setAuthOptions] = useState({ pin: true, qr: false });
+  const [targetFloor, setTargetFloor] = useState(null);
+  const [pin, setPin] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [qrValue, setQrValue] = useState('');
+  const [qrError, setQrError] = useState('');
+  const [qrScannerState, setQrScannerState] = useState('idle');
+  const [accessState, setAccessState] = useState(readAccessState);
+  const scannerRef = useRef(null);
 
-    const getLockedFloors = () => {
-        try {
-            const saved = localStorage.getItem('locked_floors');
-            return saved ? JSON.parse(saved) : [6, 9, 13];
-        } catch { return [6, 9, 13]; }
-    };
+  useEffect(() => {
+    return subscribeAccessChange(() => setAccessState(readAccessState()));
+  }, []);
 
-    const startCamera = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            setCameraStream(stream);
-            if (videoRef.current) videoRef.current.srcObject = stream;
-        } catch (err) {
-            console.error('Camera fail', err);
-            setPinError('Không thể bật camera');
+  const lockedFloors = accessState.lockedFloors;
+  const floorPins = accessState.floorPins;
+  const authConfig = accessState.authConfig;
+
+  const activeFloorAuth = useMemo(() => {
+    if (!targetFloor) return { pin: true, qr: false };
+    return authConfig[String(targetFloor)] || { pin: true, qr: false };
+  }, [authConfig, targetFloor]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function startQrScanner() {
+      if (!showAuthModal || authStep !== 'qr') return;
+
+      const region = document.getElementById(QR_REGION_ID);
+      if (!region) return;
+
+      try {
+        setQrScannerState('starting');
+        const scanner = new Html5Qrcode(QR_REGION_ID);
+        scannerRef.current = scanner;
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 240, height: 240 } },
+          (decodedText) => {
+            if (cancelled) return;
+            setQrValue(decodedText);
+            setQrScannerState('scanned');
+          },
+          () => {}
+        );
+        if (!cancelled) {
+          setQrScannerState('running');
         }
-    };
-
-    const stopCamera = () => {
-        if (cameraStream) {
-            cameraStream.getTracks().forEach(t => t.stop());
-            setCameraStream(null);
+      } catch {
+        if (!cancelled) {
+          setQrScannerState('camera-unavailable');
         }
+      }
+    }
+
+    startQrScanner();
+
+    return () => {
+      cancelled = true;
+      const current = scannerRef.current;
+      scannerRef.current = null;
+      if (current) {
+        current.stop().catch(() => {}).finally(() => current.clear().catch(() => {}));
+      }
     };
+  }, [authStep, showAuthModal]);
 
-    useEffect(() => {
-        if (showPinModal && authStep === 'face') startCamera();
-        else stopCamera();
-        return () => stopCamera();
-    }, [authStep, showPinModal]);
+  const resetAuthState = () => {
+    setPin('');
+    setPinError('');
+    setQrValue('');
+    setQrError('');
+    setQrScannerState('idle');
+  };
 
-    const handleCall = async (floor) => {
-        const locked = getLockedFloors();
-        if (locked.includes(floor)) {
-            let config = { pin: true, face: false };
-            try {
-                const savedCfg = JSON.parse(localStorage.getItem('floor_auth_config') || '{}');
-                if (savedCfg[floor]) config = savedCfg[floor];
-            } catch {}
+  const closeAuthModal = () => {
+    setShowAuthModal(false);
+    setTargetFloor(null);
+    resetAuthState();
+  };
 
-            setAuthOptions(config);
-            setPinTarget(floor);
-            setPin('');
-            setPinError('');
+  const doCall = async (floor) => {
+    setSelectedFloors((prev) => (prev.includes(floor) ? prev : [...prev, floor]));
+    setPressed(floor);
+    setTimeout(() => setPressed(null), 220);
 
-            if (config.pin && config.face) setAuthStep('select');
-            else if (config.face) setAuthStep('face');
-            else setAuthStep('pin');
+    try {
+      localStorage.setItem('lift_target', String(floor));
+    } catch {}
 
-            setShowPinModal(true);
-            return;
-        }
-        doCall(floor);
-    };
+    try {
+      const response = await api.callFloor(floor);
+      const message = response?.message || response?.status || `Đã gọi tầng ${floor}`;
+      showToast(typeof message === 'string' ? message : `Đã gọi tầng ${floor}`);
+      appendMaintenanceTimeline({
+        title: `Gọi tầng ${floor}`,
+        severity: 'info',
+        source: 'call_screen',
+        location: `Cabin / Tầng ${floor}`,
+        extra: { floor, response },
+      });
+    } catch (error) {
+      showToast('Không thể gọi tầng', error?.message || 'Kiểm tra backend điều khiển');
+    }
+  };
 
-    const doCall = async (floor) => {
-        setSelectedFloors(prev => prev.includes(floor) ? prev.filter(f => f !== floor) : [...prev, floor]);
-        setPressed(floor);
-        setTimeout(() => setPressed(null), 300);
-        localStorage.setItem('lift_target', String(floor));
+  const unlockFloorAndCall = async (floor, payload = {}) => {
+    const nextLocked = lockedFloors.filter((item) => item !== floor);
+    setLockedFloors(nextLocked);
+    setAccessState(readAccessState());
 
-        try {
-            const response = await api.callFloor(floor);
-            const msg = response?.message || response?.status || `Đã gọi tầng ${floor}`;
-            showToast(typeof msg === 'string' ? msg : `Đã gọi tầng ${floor}`);
-        } catch {
-            showToast('Không thể gọi tầng');
-        }
-    };
+    appendMaintenanceTimeline({
+      title: `QR mở khóa tầng ${floor}`,
+      severity: 'info',
+      source: 'qr_access',
+      location: `Cabin / Tầng ${floor}`,
+      actor: payload.employee_name || payload.employee_id || payload.token || 'QR authorized',
+      extra: payload,
+    });
 
-    const handleFaceScan = () => {
-        setTimeout(() => {
-            const currentLocked = getLockedFloors();
-            const newLocked = currentLocked.filter(f => f !== pinTarget);
-            localStorage.setItem('locked_floors', JSON.stringify(newLocked));
-            showToast(`Xác thực FaceID thành công: Tầng ${pinTarget}`);
-            setShowPinModal(false);
-            doCall(pinTarget);
-        }, 1500);
-    };
+    showToast(`Mở khóa QR thành công: tầng ${floor}`);
+    closeAuthModal();
+    await doCall(floor);
+  };
 
-    const handlePinSubmit = () => {
-        if (pin.length !== 4) {
-            setPinError('Mật khẩu phải đủ 4 số');
-            return;
-        }
-        let floorPins = {};
-        try { floorPins = JSON.parse(localStorage.getItem('floor_pins') || '{}'); } catch {}
-        const correctPin = floorPins[pinTarget];
-        if (correctPin && pin !== correctPin) {
-            setPinError('Sai mật khẩu. Vui lòng thử lại.');
-            setPin('');
-            return;
-        }
+  const handleCall = (floor) => {
+    if (lockedFloors.includes(floor)) {
+      const config = authConfig[String(floor)] || { pin: true, qr: false };
+      setTargetFloor(floor);
+      setAuthOptions(config);
+      if (config.pin && config.qr) setAuthStep('select');
+      else if (config.qr) setAuthStep('qr');
+      else setAuthStep('pin');
+      resetAuthState();
+      setShowAuthModal(true);
+      return;
+    }
+    doCall(floor);
+  };
 
-        const currentLocked = getLockedFloors();
-        const newLocked = currentLocked.filter(f => f !== pinTarget);
-        localStorage.setItem('locked_floors', JSON.stringify(newLocked));
-        showToast(`Đã mở khóa tầng ${pinTarget}`);
+  const handlePinSubmit = async () => {
+    if (!targetFloor) return;
+    if (pin.length !== 4) {
+      setPinError('PIN phải đủ 4 chữ số');
+      return;
+    }
+    const expected = floorPins[String(targetFloor)] || floorPins[targetFloor];
+    if (!expected || pin !== String(expected)) {
+      setPinError('PIN không đúng. Vui lòng thử lại.');
+      return;
+    }
 
-        setShowPinModal(false);
-        doCall(pinTarget);
-    };
+    setLockedFloors(lockedFloors.filter((item) => item !== targetFloor));
+    setAccessState(readAccessState());
+    appendMaintenanceTimeline({
+      title: `PIN mở khóa tầng ${targetFloor}`,
+      severity: 'info',
+      source: 'pin_access',
+      location: `Cabin / Tầng ${targetFloor}`,
+    });
+    showToast(`Đã mở khóa tầng ${targetFloor}`);
+    const floor = targetFloor;
+    closeAuthModal();
+    await doCall(floor);
+  };
 
-    const handlePinDigit = (digit) => {
-        if (pin.length < 4) setPin(prev => prev + digit);
-    };
+  const handleQrSubmit = async () => {
+    if (!targetFloor) return;
+    const payload = parseQrPayload(qrValue);
+    if (!payload.raw) {
+      setQrError('Chưa có dữ liệu QR để xác thực');
+      return;
+    }
 
-    const handlePinBackspace = () => {
-        setPin(prev => prev.slice(0, -1));
-        setPinError('');
-    };
+    const authorized = isQrAuthorizedForFloor(targetFloor, payload);
+    if (!authorized) {
+      setQrError('QR không được cấp quyền mở tầng này');
+      appendMaintenanceTimeline({
+        title: `QR bị từ chối ở tầng ${targetFloor}`,
+        severity: 'warn',
+        source: 'qr_access',
+        location: `Cabin / Tầng ${targetFloor}`,
+        actor: payload.employee_name || payload.employee_id || payload.token || 'QR unknown',
+        extra: payload,
+      });
+      showToast('QR không hợp lệ cho tầng này');
+      return;
+    }
 
-    const lockedFloors = getLockedFloors();
+    await unlockFloorAndCall(targetFloor, payload);
+  };
 
-    return (
-        <div>
-            <div className="page-title">
-                <h1>Màn hình gọi tầng</h1>
-                <div className="meta">Chọn các tầng cần đến</div>
-            </div>
+  const handlePinDigit = (digit) => {
+    setPinError('');
+    setPin((prev) => (prev.length >= 4 ? prev : `${prev}${digit}`));
+  };
 
-            <div className="panel">
-                <div className="call-grid">
-                    {FLOORS.map((f) => {
-                        const isLocked = lockedFloors.includes(f);
-                        const isSelected = selectedFloors.includes(f);
-                        const isPressed = pressed === f;
-                        return (
-                            <button
-                                key={f}
-                                className={[
-                                    'floor-btn',
-                                    isLocked ? 'locked' : '',
-                                    isSelected ? 'selected' : '',
-                                    isPressed ? 'pressing' : '',
-                                ].join(' ')}
-                                onClick={() => handleCall(f)}
-                            >
-                                <span className="floor-num">{f}</span>
-                                {isLocked && <span className="lock-label">🔒 Khóa</span>}
-                                {isSelected && !isLocked && <span className="selected-label">✓ Đã chọn</span>}
-                            </button>
-                        );
-                    })}
-                </div>
+  const handlePinBackspace = () => {
+    setPinError('');
+    setPin((prev) => prev.slice(0, -1));
+  };
 
-                <div className="auth-panel">
-                    <div className="auth-card">
-                        <h3>🔑 Xác thực mật khẩu 4 số</h3>
-                        <div className="muted">Nhập mật khẩu 4 số để mở khóa tầng bị hạn chế.</div>
-                    </div>
-                    <div className="auth-card">
-                        <h3>👤 Xác thực khuôn mặt</h3>
-                        <div className="muted">Nhìn vào camera để xác thực FaceID.</div>
-                    </div>
-                </div>
-            </div>
+  return (
+    <div>
+      <div className="page-title">
+        <h1>Màn hình gọi tầng</h1>
+        <div className="meta">Đã thay Face ID bằng QR code để đồng bộ với trung tâm bảo trì</div>
+      </div>
 
-            {showPinModal && (
-                <div className="pin-overlay" onClick={() => setShowPinModal(false)}>
-                    <div className="pin-modal" onClick={e => e.stopPropagation()}>
-                        {authStep === 'select' && (
-                            <>
-                                <h3>Chọn phương thức xác thực</h3>
-                                <div className="muted" style={{ marginBottom: 20 }}>Tầng {pinTarget} yêu cầu mở khóa.</div>
-                                <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                                    <button className="btn btn-primary" onClick={() => setAuthStep('pin')}>Mật khẩu</button>
-                                    <button className="btn btn-primary" onClick={() => setAuthStep('face')}>FaceID</button>
-                                </div>
-                            </>
-                        )}
-
-                        {authStep === 'face' && (
-                            <>
-                                <h3>Xác thực khuôn mặt</h3>
-                                <div className="muted">Giữ yên khuôn mặt...</div>
-                                <div style={{ width: '100%', height: 200, background: '#000', margin: '10px 0', borderRadius: 8, overflow: 'hidden', position: 'relative' }}>
-                                    <video ref={videoRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} onCanPlay={() => handleFaceScan()} />
-                                </div>
-                                <button className="btn btn-ghost" onClick={() => authOptions.pin ? setAuthStep('select') : setShowPinModal(false)}>Quay lại</button>
-                            </>
-                        )}
-
-                        {authStep === 'pin' && (
-                            <>
-                                <h3>Nhập mật khẩu 4 số</h3>
-                                <div className="muted">Tầng {pinTarget} bị khóa. Nhập PIN để mở.</div>
-                                <div className="pin-dots">
-                                    {[0, 1, 2, 3].map(i => (
-                                        <div key={i} className={`pin-dot ${i < pin.length ? 'filled' : ''}`} />
-                                    ))}
-                                </div>
-                                {pinError && <div className="pin-error">{pinError}</div>}
-                                <div className="pin-pad">
-                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, null, 0, 'del'].map((d, i) => (
-                                        <button
-                                            key={i}
-                                            className={`pin-key ${d === null ? 'empty' : ''} ${d === 'del' ? 'del' : ''}`}
-                                            onClick={() => {
-                                                if (d === null) return;
-                                                if (d === 'del') handlePinBackspace();
-                                                else handlePinDigit(String(d));
-                                            }}
-                                            disabled={d === null}
-                                        >
-                                            {d === 'del' ? '⌫' : d}
-                                        </button>
-                                    ))}
-                                </div>
-                                <div className="pin-actions">
-                                    <button className="btn btn-ghost" onClick={() => {
-                                        if (authOptions.face && authOptions.pin) setAuthStep('select');
-                                        else setShowPinModal(false);
-                                    }}>Quay lại</button>
-                                    <button className="btn btn-primary" onClick={handlePinSubmit}>Xác nhận</button>
-                                </div>
-                            </>
-                        )}
-                    </div>
-                </div>
-            )}
+      <div className="panel">
+        <div className="call-grid">
+          {FLOORS.map((floor) => {
+            const isLocked = lockedFloors.includes(floor);
+            const isSelected = selectedFloors.includes(floor);
+            const isPressed = pressed === floor;
+            return (
+              <button
+                key={floor}
+                className={[
+                  'floor-btn',
+                  isLocked ? 'locked' : '',
+                  isSelected ? 'selected' : '',
+                  isPressed ? 'pressing' : '',
+                ].join(' ')}
+                onClick={() => handleCall(floor)}
+              >
+                <span className="floor-num">{floor}</span>
+                {isLocked ? <span className="lock-label">🔒 Khóa</span> : null}
+                {isSelected && !isLocked ? <span className="selected-label">✓ Đã chọn</span> : null}
+              </button>
+            );
+          })}
         </div>
-    );
+
+        <div className="auth-panel">
+          <div className="auth-card">
+            <h3>🔑 Mở khóa bằng PIN</h3>
+            <div className="muted">Áp dụng cho các tầng khóa được cấu hình PIN trong trung tâm bảo trì.</div>
+          </div>
+          <div className="auth-card">
+            <h3>📷 Mở khóa bằng QR code</h3>
+            <div className="muted">Camera sẽ quét QR. Chỉ QR được cấp quyền mới mở được tầng bị khóa.</div>
+          </div>
+        </div>
+      </div>
+
+      {showAuthModal ? (
+        <div className="pin-overlay" onClick={closeAuthModal}>
+          <div className="pin-modal qr-modal" onClick={(event) => event.stopPropagation()}>
+            {authStep === 'select' ? (
+              <>
+                <h3>Chọn phương thức xác thực</h3>
+                <div className="muted modal-subtitle">Tầng {targetFloor} đang bị khóa.</div>
+                <div className="auth-select-grid">
+                  <button className="btn btn-primary" onClick={() => setAuthStep('pin')}>
+                    Dùng PIN
+                  </button>
+                  <button className="btn btn-primary" onClick={() => setAuthStep('qr')}>
+                    Dùng QR code
+                  </button>
+                </div>
+              </>
+            ) : null}
+
+            {authStep === 'pin' ? (
+              <>
+                <h3>Nhập PIN mở khóa</h3>
+                <div className="muted modal-subtitle">Tầng {targetFloor} yêu cầu PIN 4 số.</div>
+                <div className="pin-dots">
+                  {[0, 1, 2, 3].map((index) => (
+                    <div key={index} className={`pin-dot ${index < pin.length ? 'filled' : ''}`} />
+                  ))}
+                </div>
+                {pinError ? <div className="pin-error">{pinError}</div> : null}
+                <div className="pin-pad">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, null, 0, 'del'].map((digit, index) => (
+                    <button
+                      key={`${digit}-${index}`}
+                      className={`pin-key ${digit === null ? 'empty' : ''} ${digit === 'del' ? 'del' : ''}`}
+                      onClick={() => {
+                        if (digit === null) return;
+                        if (digit === 'del') handlePinBackspace();
+                        else handlePinDigit(String(digit));
+                      }}
+                      disabled={digit === null}
+                    >
+                      {digit === 'del' ? '⌫' : digit}
+                    </button>
+                  ))}
+                </div>
+                <div className="pin-actions">
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      if (authOptions.pin && authOptions.qr) setAuthStep('select');
+                      else closeAuthModal();
+                    }}
+                  >
+                    Quay lại
+                  </button>
+                  <button className="btn btn-primary" onClick={handlePinSubmit}>
+                    Xác nhận
+                  </button>
+                </div>
+              </>
+            ) : null}
+
+            {authStep === 'qr' ? (
+              <>
+                <h3>Quét QR code mở khóa</h3>
+                <div className="muted modal-subtitle">
+                  Tầng {targetFloor} chỉ mở khi QR thuộc danh sách được phép trong trung tâm bảo trì.
+                </div>
+
+                <div className="qr-reader-shell">
+                  <div id={QR_REGION_ID} className="qr-reader" />
+                </div>
+
+                <div className="qr-status-row">
+                  <span className={`qr-chip ${qrScannerState}`}>
+                    {qrScannerState === 'running' && 'Camera đang quét QR'}
+                    {qrScannerState === 'starting' && 'Đang khởi tạo camera'}
+                    {qrScannerState === 'scanned' && 'Đã nhận dữ liệu QR'}
+                    {qrScannerState === 'camera-unavailable' && 'Không mở được camera, hãy dán mã QR thủ công'}
+                    {qrScannerState === 'idle' && 'Sẵn sàng quét'}
+                  </span>
+                </div>
+
+                <label className="qr-input-box">
+                  <span>Dữ liệu QR</span>
+                  <textarea
+                    rows={4}
+                    value={qrValue}
+                    onChange={(event) => {
+                      setQrValue(event.target.value);
+                      setQrError('');
+                    }}
+                    placeholder='Ví dụ: {"token":"QR-F5-ALLOWED","employee_id":"NV001","employee_name":"Nguyễn Văn A"}'
+                  />
+                </label>
+
+                {qrError ? <div className="pin-error">{qrError}</div> : null}
+
+                <div className="pin-actions">
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      if (authOptions.pin && authOptions.qr) setAuthStep('select');
+                      else closeAuthModal();
+                    }}
+                  >
+                    Quay lại
+                  </button>
+                  <button className="btn btn-primary" onClick={handleQrSubmit}>
+                    Xác thực QR
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }

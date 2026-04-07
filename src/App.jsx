@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Routes, Route, NavLink } from 'react-router-dom';
 import Topbar from './components/Topbar';
 import { ToastProvider } from './components/Toast';
@@ -27,8 +27,32 @@ export default function App() {
   const status = useElevatorStatus();
   const weather = useWeather();
 
+  const overloadThreshold = Number(import.meta.env.VITE_OVERLOAD_THRESHOLD || status.overload_threshold || 4);
+
+  const overloadInfo = useMemo(() => {
+    const people = Number(status.people_count);
+    const active = Boolean(status.overload) || (Number.isFinite(people) && people >= overloadThreshold);
+    return {
+      active,
+      people: Number.isFinite(people) ? people : status.people_count,
+      threshold: overloadThreshold,
+    };
+  }, [status.overload, status.people_count, overloadThreshold]);
+
   return (
     <ToastProvider>
+      {overloadInfo.active ? (
+        <div className="global-overload-alert" role="alert" aria-live="assertive">
+          <div className="global-overload-badge">OVERLOAD</div>
+          <div className="global-overload-copy">
+            <strong>Cabin đang quá tải</strong>
+            <span>
+              {overloadInfo.people} người • ngưỡng {overloadInfo.threshold} người
+            </span>
+          </div>
+        </div>
+      ) : null}
+
       <Topbar
         time={clock}
         peopleCount={status.people_count ?? '--'}

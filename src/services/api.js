@@ -150,19 +150,24 @@ async function requestFirstSuccess(attempts = []) {
   throw lastError || new Error('Không thể kết nối backend');
 }
 
-export async function fetchChatAbortable(message, signal, extra = {}) {
-  const payload = {
+function buildChatPayload(message, extra = {}) {
+  return {
     message,
     question: message,
     session_id: extra.session_id || getAgentSessionId(),
     employee_id: extra.employee_id || '',
     employee_name: extra.employee_name || '',
+    scope: extra.scope,
+    persona: extra.persona,
+    include_trace: extra.include_trace,
   };
+}
 
+export async function fetchChatAbortable(message, signal, extra = {}) {
   const data = await requestJson('/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(buildChatPayload(message, extra)),
     signal,
   });
 
@@ -170,32 +175,94 @@ export async function fetchChatAbortable(message, signal, extra = {}) {
 }
 
 const api = {
-  /* ===== CORE SYSTEM ===== */
   elevatorStatus: () => requestJson('/api/elevator/status'),
   weather: () => requestJson('/api/weather'),
   agentStatus: () => requestJson('/status'),
   health: () => requestJson('/health'),
 
-  /* ===== CHAT / LLM ===== */
   chat: async (message, extra = {}) => {
-    const payload = {
-      message,
-      question: message,
-      session_id: extra.session_id || getAgentSessionId(),
-      employee_id: extra.employee_id || '',
-      employee_name: extra.employee_name || '',
-    };
-
     const data = await requestJson('/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(buildChatPayload(message, extra)),
     });
 
     return normalizeAgentResponse(data, message);
   },
 
-  /* ===== ELEVATOR COMMAND ===== */
+  maintenanceChat: async (message, extra = {}) => {
+    const data = await requestFirstSuccess([
+      {
+        url: '/api/chat/maintenance',
+        options: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildChatPayload(message, {
+            ...extra,
+            scope: 'maintenance',
+            persona: 'maintenance_console',
+            include_trace: true,
+          })),
+        },
+      },
+      {
+        url: '/chat',
+        options: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildChatPayload(message, {
+            ...extra,
+            scope: 'maintenance',
+            persona: 'maintenance_console',
+            include_trace: true,
+          })),
+        },
+      },
+    ]);
+
+    return normalizeAgentResponse(data, message);
+  },
+
+  maintenanceLogin: (payload) =>
+    requestFirstSuccess([
+      {
+        url: '/api/integration/users/login',
+        options: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        },
+      },
+      {
+        url: '/api/maintenance/login',
+        options: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        },
+      },
+    ]),
+
+  maintenanceRegister: (payload) =>
+    requestFirstSuccess([
+      {
+        url: '/api/integration/users/register',
+        options: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        },
+      },
+      {
+        url: '/api/maintenance/register',
+        options: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        },
+      },
+    ]),
+
   command: async ({
     elevator_id = 1,
     from_floor = null,
@@ -230,7 +297,6 @@ const api = {
     return result;
   },
 
-  /* ===== SOS ===== */
   sos: async (payload = {}) => {
     return requestFirstSuccess([
       {
@@ -255,7 +321,6 @@ const api = {
     ]);
   },
 
-  /* ===== CV INTEGRATION ===== */
   cvConfig: () => requestJson('/api/integration/cv/config'),
   cvStatus: () => requestJson('/api/integration/cv/status'),
   cvEvents: (limit = 20) =>
@@ -288,7 +353,6 @@ const api = {
     ]);
   },
 
-  /* ===== DATA MANAGER ===== */
   dataCatalog: () => requestJson('/api/integration/data/catalog'),
 
   dataTables: (database) =>
