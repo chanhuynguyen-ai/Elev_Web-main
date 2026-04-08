@@ -32,6 +32,21 @@ const guides = [
         title: 'Tai nạn / Sức khỏe',
         content: 'Nếu có người bị thương hoặc ngất xỉu trong thang, bấm SOS ngay. Đưa thang về tầng gần nhất và gọi cấp cứu 115.',
     },
+    {
+        icon: '🌫️',
+        title: 'Khói / Ngạt khí',
+        content: 'Nếu xuất hiện khói hoặc khó thở trong cabin, cúi thấp người, che mũi bằng khăn và bấm SOS. Ra khỏi thang ngay khi cửa mở.',
+    },
+    {
+        icon: '🚪',
+        title: 'Cửa không mở',
+        content: 'Không cố dùng tay cạy cửa. Bấm nút mở cửa, gọi SOS hoặc liên hệ bảo trì. Giữ khoảng cách với mép cửa khi thang dừng.',
+    },
+    {
+        icon: '⚠️',
+        title: 'Quá tải cabin',
+        content: 'Nếu có cảnh báo quá tải, giảm bớt người hoặc hàng hóa trước khi tiếp tục di chuyển. Không cố vận hành thang khi chuông quá tải đang kêu.',
+    },
 ];
 
 export default function Guide() {
@@ -39,7 +54,7 @@ export default function Guide() {
         <div>
             <div className="page-title">
                 <h1>Hướng dẫn khẩn cấp</h1>
-                <div className="meta">6 tình huống · Hướng dẫn xử lý</div>
+                <div className="meta">9 tình huống · Hướng dẫn xử lý</div>
             </div>
 
             <div className="guide-grid">

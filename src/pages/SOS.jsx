@@ -3,6 +3,8 @@ import useElevatorStatus from '../hooks/useElevatorStatus';
 import api from '../services/api';
 import './SOS.css';
 
+const THUMB_SIZE = 72;
+
 export default function SOS() {
     const status = useElevatorStatus();
     const [sosTime, setSosTime] = useState('--:--');
@@ -30,7 +32,10 @@ export default function SOS() {
         if (!isDragging.current || !sliderRef.current) return;
         const rect = sliderRef.current.getBoundingClientRect();
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const progress = Math.max(0, Math.min(1, (clientX - rect.left - 28) / (rect.width - 56)));
+        const progress = Math.max(
+            0,
+            Math.min(1, (clientX - rect.left - THUMB_SIZE / 2) / (rect.width - THUMB_SIZE))
+        );
         setSlideProgress(progress);
     }, []);
 
@@ -78,6 +83,8 @@ export default function SOS() {
         setConnectionStatus('');
     };
 
+    const fillWidth = `calc(${(slideProgress * 100).toFixed(3)}% + ${(THUMB_SIZE * (1 - slideProgress)).toFixed(1)}px)`;
+
     return (
         <div>
             <div className="page-title">
@@ -89,19 +96,32 @@ export default function SOS() {
                 <div className="panel">
                     {!isCalling ? (
                         <div className="slide-container">
-                            <div className="slide-label">Trượt để gọi kỹ thuật →</div>
-                            <div className="slide-track" ref={sliderRef}>
-                                <div className="slide-fill" style={{ width: `${slideProgress * 100}%` }}></div>
+                            <div
+                                className="slide-track"
+                                ref={sliderRef}
+                                style={{ '--progress': slideProgress }}
+                            >
+                                <div className="slide-fill" style={{ width: fillWidth }} />
+                                <div className="slide-track-overlay" />
+                                <div className="slide-chevron-lane" aria-hidden="true">
+                                    <span>&gt;&gt;&gt;&gt;</span>
+                                    <span>&gt;&gt;&gt;&gt;</span>
+                                    <span>&gt;&gt;&gt;&gt;</span>
+                                    <span>&gt;&gt;&gt;&gt;</span>
+                                </div>
+
                                 <div
                                     className="slide-thumb"
-                                    style={{ left: `calc(${slideProgress * 100}% - ${slideProgress * 56}px)` }}
+                                    style={{ left: `calc(${slideProgress * 100}% - ${slideProgress * THUMB_SIZE}px)` }}
                                     onMouseDown={handleSlideStart}
                                     onTouchStart={handleSlideStart}
+                                    aria-label="Trượt để gọi kỹ thuật"
                                 >
-                                    🚨
+                                    <span className="slide-thumb-text">SOS</span>
                                 </div>
                             </div>
-                            <div className="muted" style={{ marginTop: 10, textAlign: 'center', fontSize: 12 }}>
+
+                            <div className="muted sos-helper-text">
                                 Kéo thanh trượt sang phải để xác nhận gọi kỹ thuật
                             </div>
                         </div>
@@ -133,7 +153,11 @@ export default function SOS() {
                         <div className="sim-info">
                             <div className="sim-signal">
                                 {Array.from({ length: 5 }, (_, i) => (
-                                    <div key={i} className={`signal-bar ${i < simInfo.signal ? 'active' : ''}`} style={{ height: `${8 + i * 4}px` }} />
+                                    <div
+                                        key={i}
+                                        className={`signal-bar ${i < simInfo.signal ? 'active' : ''}`}
+                                        style={{ height: `${8 + i * 4}px` }}
+                                    />
                                 ))}
                             </div>
                             <div>

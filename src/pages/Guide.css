@@ -2,7 +2,8 @@
 .guide-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 14px;
+    gap: 12px;
+    align-items: stretch;
 }
 
 @media (max-width: 900px) {
@@ -21,8 +22,8 @@
     background: var(--panel-2);
     border: 1px solid var(--line);
     border-radius: 14px;
-    padding: 18px;
-    min-height: 150px;
+    padding: 16px;
+    min-height: 146px;
     transition: 0.2s ease;
 }
 
@@ -33,7 +34,7 @@
 }
 
 .guide-icon {
-    font-size: 32px;
+    font-size: 30px;
     margin-bottom: 8px;
 }
 
