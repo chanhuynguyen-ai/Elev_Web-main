@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useState } from 'react';
 import useElevatorStatus from '../hooks/useElevatorStatus';
 import useClock from '../hooks/useClock';
@@ -96,19 +95,6 @@ function formatClockLike(value) {
   return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 }
 
-function formatDateTime(value) {
-  if (!value) return '--';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleString('vi-VN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    day: '2-digit',
-    month: '2-digit',
-  });
-}
-
 function formatFps(value) {
   const num = Number(value);
   if (!Number.isFinite(num)) return '--';
@@ -118,7 +104,8 @@ function formatFps(value) {
 function normalizeEventRow(event, idx) {
   return {
     id: event.id || event.event_id || idx,
-    timestamp: event.event_ts || event.timestamp || event.created_at || event.time || new Date().toISOString(),
+    timestamp:
+      event.event_ts || event.timestamp || event.created_at || event.time || new Date().toISOString(),
     time: formatClockLike(event.event_ts || event.timestamp || event.created_at || event.time),
     title: formatEventType(event),
     severity: inferSeverity(event),
@@ -133,9 +120,7 @@ function normalizeEventRow(event, idx) {
 }
 
 function normalizeDensityData(data) {
-  if (!Array.isArray(data) || !data.length) {
-    return [];
-  }
+  if (!Array.isArray(data) || !data.length) return [];
   return data.map((item, idx) => {
     const rawLabel = item.day || item.date || item.label || item.sample_ts || item.ts || '';
     let label = rawLabel;
@@ -210,7 +195,9 @@ function buildFallbackTableData(selectedDb, selectedTable, events, density, stat
 function getUnknownCandidate(events) {
   return events.find((event) =>
     /unknown|unidentified|chưa gán nhãn|unknown_person|unknown face/i.test(
-      [event.raw?.event_type, event.raw?.title, event.raw?.event, event.title].filter(Boolean).join(' ')
+      [event.raw?.event_type, event.raw?.title, event.raw?.event, event.title]
+        .filter(Boolean)
+        .join(' ')
     )
   );
 }
@@ -337,11 +324,7 @@ function pushLocalTimeline(event) {
 
 function LineDensityChart({ items }) {
   if (!items.length) {
-    return (
-      <div className="empty-cell" style={{ padding: 24 }}>
-        Chưa có dữ liệu mật độ/ngày.
-      </div>
-    );
+    return <div className="empty-cell" style={{ padding: 24 }}>Chưa có dữ liệu mật độ/ngày.</div>;
   }
 
   const width = 720;
@@ -350,12 +333,11 @@ function LineDensityChart({ items }) {
   const maxValue = Math.max(1, ...items.map((item) => item.value));
   const stepX = items.length > 1 ? (width - padding * 2) / (items.length - 1) : 0;
 
-  const points = items
-    .map((item, index) => {
-      const x = padding + index * stepX;
-      const y = height - padding - (item.value / maxValue) * (height - padding * 2);
-      return { x, y, ...item };
-    });
+  const points = items.map((item, index) => {
+    const x = padding + index * stepX;
+    const y = height - padding - (item.value / maxValue) * (height - padding * 2);
+    return { x, y, ...item };
+  });
 
   const path = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
   const areaPath = `${path} L ${points[points.length - 1].x} ${height - padding} L ${points[0].x} ${height - padding} Z`;
@@ -409,8 +391,8 @@ export default function Maintenance() {
   const status = useElevatorStatus();
   const clock = useClock();
 
-  const [authed, setAuthed] = useState(() => localStorage.getItem('maint_authed') === '1');
-  const [empCode, setEmpCode] = useState(() => localStorage.getItem('maint_emp_code') || '');
+  const [authed, setAuthed] = useState(false);
+  const [empCode, setEmpCode] = useState('');
   const [mssv, setMssv] = useState('');
   const [authMode, setAuthMode] = useState('login');
   const [registerForm, setRegisterForm] = useState({
@@ -449,7 +431,7 @@ export default function Maintenance() {
     )
   );
   const [selectedRowIds, setSelectedRowIds] = useState([]);
-  const [expandedPanel, setExpandedPanel] = useState('locks');
+  const [expandedPanel, setExpandedPanel] = useState(null);
   const [selectedFloor, setSelectedFloor] = useState(5);
 
   const [lockedFloors, setLockedFloors] = useState(() => {
@@ -483,6 +465,12 @@ export default function Maintenance() {
   const [dataConnected, setDataConnected] = useState(false);
   const [localUsers, setLocalUsers] = useState(() => readLocalUsers());
   const [localTimeline, setLocalTimeline] = useState(() => readLocalTimeline());
+
+  useEffect(() => {
+    setAuthed(false);
+    setEmpCode('');
+    setMssv('');
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -605,7 +593,9 @@ export default function Maintenance() {
         if (!disposed) {
           setTableColumns(fallback.columns);
           setTableRows(fallback.rows);
-          setPrimaryKeys(fallback.columns.includes('id') ? ['id'] : selectedDb === 'elevator_user' ? ['employee_code'] : []);
+          setPrimaryKeys(
+            fallback.columns.includes('id') ? ['id'] : selectedDb === 'elevator_user' ? ['employee_code'] : []
+          );
           setDataReadOnly(selectedDb === 'elevator_cv');
           setDataConnected(false);
         }
@@ -641,11 +631,7 @@ export default function Maintenance() {
   ];
 
   const healthTiles = [
-    {
-      label: 'Camera',
-      value: cvStatus?.camera_online ? 'ON' : 'OFF',
-      tone: cvStatus?.camera_online ? 'ok' : 'err',
-    },
+    { label: 'Camera', value: cvStatus?.camera_online ? 'ON' : 'OFF', tone: cvStatus?.camera_online ? 'ok' : 'err' },
     { label: 'FPS', value: formatFps(cvStatus?.fps), tone: 'info' },
     { label: 'Người', value: cvStatus?.people_count ?? cvStatus?.people ?? '--', tone: 'info' },
     { label: 'Event', value: cvStatus?.last_event_type || cvStatus?.last_event || '--', tone: 'info' },
@@ -684,9 +670,7 @@ export default function Maintenance() {
       .slice(0, 30);
   }, [cvEvents, localTimeline]);
 
-  const displayColumns = useMemo(() => {
-    return tableColumns.map(getColumnName).filter(Boolean);
-  }, [tableColumns]);
+  const displayColumns = useMemo(() => tableColumns.map(getColumnName).filter(Boolean), [tableColumns]);
 
   const addLocalTimeline = (title, severity = 'info', actor = empCode || 'SYS', location = 'Trung tâm bảo trì') => {
     const next = pushLocalTimeline({ title, severity, actor, location });
@@ -699,7 +683,6 @@ export default function Maintenance() {
       return;
     }
 
-    // ===== DEMO_LOGIN_REMOVE_BEFORE_JETSON_START =====
     if (
       ENABLE_DEV_DEMO_LOGIN &&
       empCode.trim() === DEV_DEMO_ACCOUNT.employee_code &&
@@ -713,14 +696,10 @@ export default function Maintenance() {
       showToast('Đăng nhập demo thành công', 'Bạn đang ở chế độ test trên Win11.');
       return;
     }
-    // ===== DEMO_LOGIN_REMOVE_BEFORE_JETSON_END =====
 
     try {
       if (api.maintenanceLogin) {
-        const payload = await api.maintenanceLogin({
-          employee_code: empCode.trim(),
-          password: mssv,
-        });
+        const payload = await api.maintenanceLogin({ employee_code: empCode.trim(), password: mssv });
         const profile = payload?.user || payload?.session || { employee_code: empCode.trim() };
         localStorage.setItem('maint_authed', '1');
         localStorage.setItem('maint_emp_code', empCode.trim());
@@ -732,9 +711,7 @@ export default function Maintenance() {
       }
 
       const users = readLocalUsers();
-      const found = users.find(
-        (item) => item.employee_code === empCode.trim() && item.password === mssv
-      );
+      const found = users.find((item) => item.employee_code === empCode.trim() && item.password === mssv);
       if (found) {
         localStorage.setItem('maint_authed', '1');
         localStorage.setItem('maint_emp_code', found.employee_code);
@@ -754,10 +731,12 @@ export default function Maintenance() {
   const handleLogout = () => {
     localStorage.removeItem('maint_authed');
     localStorage.removeItem('maint_emp_code');
+    localStorage.removeItem('maint_profile');
     setAuthed(false);
+    setEmpCode('');
+    setMssv('');
   };
 
-  // ===== DEMO_LOGIN_REMOVE_BEFORE_JETSON_START =====
   const fillDemoCredentials = () => {
     setEmpCode(DEV_DEMO_ACCOUNT.employee_code);
     setMssv(DEV_DEMO_ACCOUNT.password);
@@ -773,7 +752,6 @@ export default function Maintenance() {
     addLocalTimeline(`Đăng nhập demo local: ${session.full_name}`, 'info', session.employee_code);
     showToast('Đăng nhập demo thành công', 'Bạn đang ở chế độ test trên Win11.');
   };
-  // ===== DEMO_LOGIN_REMOVE_BEFORE_JETSON_END =====
 
   const handleRegister = async () => {
     if (!registerForm.employee_code.trim() || !registerForm.password.trim() || !registerForm.full_name.trim()) {
@@ -859,15 +837,9 @@ export default function Maintenance() {
 
   const toggleFloorLock = (floor) => {
     setSelectedFloor(floor);
-    const next = lockedFloors.includes(floor)
-      ? lockedFloors.filter((f) => f !== floor)
-      : [...lockedFloors, floor];
+    const next = lockedFloors.includes(floor) ? lockedFloors.filter((f) => f !== floor) : [...lockedFloors, floor];
     persistLockedFloors(next);
-    addLocalTimeline(
-      next.includes(floor) ? `Đã khóa tầng ${floor}` : `Đã mở khóa tầng ${floor}`,
-      next.includes(floor) ? 'warn' : 'info',
-      empCode || 'SYS'
-    );
+    addLocalTimeline(next.includes(floor) ? `Đã khóa tầng ${floor}` : `Đã mở khóa tầng ${floor}`, next.includes(floor) ? 'warn' : 'info', empCode || 'SYS');
     showToast(next.includes(floor) ? `Đã khóa tầng ${floor}` : `Đã mở khóa tầng ${floor}`);
   };
 
@@ -905,19 +877,10 @@ export default function Maintenance() {
   };
 
   const saveQrConfig = () => {
-    const employees = qrEmployees
-      .split('\n')
-      .map((item) => item.trim())
-      .filter(Boolean);
-    const tokens = qrTokens
-      .split('\n')
-      .map((item) => item.trim())
-      .filter(Boolean);
+    const employees = qrEmployees.split('\n').map((item) => item.trim()).filter(Boolean);
+    const tokens = qrTokens.split('\n').map((item) => item.trim()).filter(Boolean);
 
-    const next = {
-      ...floorQrRules,
-      [selectedFloor]: { employees, tokens },
-    };
+    const next = { ...floorQrRules, [selectedFloor]: { employees, tokens } };
     persistFloorQrRules(next);
     addLocalTimeline(`Lưu QR rule cho tầng ${selectedFloor}`, 'info', empCode || 'SYS');
     showToast(`Đã lưu cấu hình QR cho tầng ${selectedFloor}`);
@@ -940,11 +903,7 @@ export default function Maintenance() {
     }
     setRegisterBusy(true);
     try {
-      await api.registerFace?.({
-        ...faceForm,
-        cam_id: cvStatus?.cam_id || 'cam_01',
-        source_event: unknownCandidate?.raw || null,
-      });
+      await api.registerFace?.({ ...faceForm, cam_id: cvStatus?.cam_id || 'cam_01', source_event: unknownCandidate?.raw || null });
       showToast('Đã gửi đăng ký khuôn mặt');
       setShowFaceModal(false);
       setFaceForm({ employee_code: '', employee_name: '', department: '', note: '' });
@@ -956,19 +915,15 @@ export default function Maintenance() {
   };
 
   const toggleDataRow = (rowId) => {
-    setSelectedRowIds((prev) =>
-      prev.includes(rowId) ? prev.filter((id) => id !== rowId) : [...prev, rowId]
-    );
+    setSelectedRowIds((prev) => (prev.includes(rowId) ? prev.filter((id) => id !== rowId) : [...prev, rowId]));
   };
 
   const handleCellChange = (rowId, column, value) => {
-    setTableRows((prev) =>
-      prev.map((row, idx) => {
-        const currentId = getRowId(row, idx, primaryKeys);
-        if (currentId !== rowId) return row;
-        return { ...row, [column]: value, _dirty: true };
-      })
-    );
+    setTableRows((prev) => prev.map((row, idx) => {
+      const currentId = getRowId(row, idx, primaryKeys);
+      if (currentId !== rowId) return row;
+      return { ...row, [column]: value, _dirty: true };
+    }));
   };
 
   const handleDataAction = async (action) => {
@@ -979,19 +934,13 @@ export default function Maintenance() {
     }
 
     if (action === 'add') {
-      const newRow = displayColumns.reduce(
-        (acc, col) => ({ ...acc, [col]: '' }),
-        { _temp_id: `new-${Date.now()}`, _dirty: true }
-      );
+      const newRow = displayColumns.reduce((acc, col) => ({ ...acc, [col]: '' }), { _temp_id: `new-${Date.now()}`, _dirty: true });
       setTableRows((prev) => [newRow, ...prev]);
       return;
     }
 
     if (action === 'save') {
-      const dirtyRows = tableRows.filter(
-        (row, idx) => row._dirty || selectedRowIds.includes(getRowId(row, idx, primaryKeys))
-      );
-
+      const dirtyRows = tableRows.filter((row, idx) => row._dirty || selectedRowIds.includes(getRowId(row, idx, primaryKeys)));
       if (!dirtyRows.length) {
         showToast('Chưa có dòng nào thay đổi');
         return;
@@ -1035,24 +984,17 @@ export default function Maintenance() {
     }
 
     if (action === 'delete') {
-      const rowsToDelete = tableRows.filter((row, idx) =>
-        selectedRowIds.includes(getRowId(row, idx, primaryKeys))
-      );
-
+      const rowsToDelete = tableRows.filter((row, idx) => selectedRowIds.includes(getRowId(row, idx, primaryKeys)));
       if (!rowsToDelete.length) {
         showToast('Chưa chọn dòng nào để xóa');
         return;
       }
 
       if (selectedDb === 'elevator_user' && !api.deleteDataRow) {
-        const nextUsers = localUsers.filter(
-          (item) => !rowsToDelete.some((row) => row.employee_code === item.employee_code)
-        );
+        const nextUsers = localUsers.filter((item) => !rowsToDelete.some((row) => row.employee_code === item.employee_code));
         saveJsonLocalStorage(USER_STORAGE_KEY, nextUsers);
         setLocalUsers(nextUsers);
-        setTableRows((prev) =>
-          prev.filter((row, idx) => !selectedRowIds.includes(getRowId(row, idx, primaryKeys)))
-        );
+        setTableRows((prev) => prev.filter((row, idx) => !selectedRowIds.includes(getRowId(row, idx, primaryKeys))));
         setSelectedRowIds([]);
         showToast('Đã xóa dữ liệu local elevator_user');
         return;
@@ -1066,14 +1008,10 @@ export default function Maintenance() {
       try {
         for (const row of rowsToDelete) {
           const keys = buildDeleteKeys(row, primaryKeys);
-          if (!keys) {
-            throw new Error('Không tìm được khóa chính để xóa an toàn');
-          }
+          if (!keys) throw new Error('Không tìm được khóa chính để xóa an toàn');
           await api.deleteDataRow(selectedDb, selectedTable, keys);
         }
-        setTableRows((prev) =>
-          prev.filter((row, idx) => !selectedRowIds.includes(getRowId(row, idx, primaryKeys)))
-        );
+        setTableRows((prev) => prev.filter((row, idx) => !selectedRowIds.includes(getRowId(row, idx, primaryKeys))));
         setSelectedRowIds([]);
         showToast('Đã xóa các dòng đã chọn');
       } catch (error) {
@@ -1083,20 +1021,12 @@ export default function Maintenance() {
   };
 
   const handleExportCsv = () => {
-    exportRowsToCsv(
-      `${selectedDb}_${selectedTable}_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`,
-      displayColumns,
-      tableRows
-    );
+    exportRowsToCsv(`${selectedDb}_${selectedTable}_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`, displayColumns, tableRows);
     showToast('Đã lưu file .csv');
   };
 
   const handleExportExcel = () => {
-    exportRowsToExcel(
-      `${selectedDb}_${selectedTable}_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.xls`,
-      displayColumns,
-      tableRows
-    );
+    exportRowsToExcel(`${selectedDb}_${selectedTable}_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.xls`, displayColumns, tableRows);
     showToast('Đã lưu file .excel');
   };
 
@@ -1106,8 +1036,7 @@ export default function Maintenance() {
     padding: '24px',
     borderRadius: 24,
     border: '1px solid rgba(122,167,255,0.18)',
-    background:
-      'radial-gradient(circle at top right, rgba(76,201,240,0.12), transparent 30%), rgba(7,14,32,0.88)',
+    background: 'radial-gradient(circle at top right, rgba(76,201,240,0.12), transparent 30%), rgba(7,14,32,0.88)',
     boxShadow: '0 24px 80px rgba(0,0,0,0.32)',
   };
 
@@ -1135,16 +1064,12 @@ export default function Maintenance() {
 
   const authGridStyle = {
     display: 'grid',
-    gridTemplateColumns: authMode === 'login' ? '1fr 1fr' : '1fr 1fr',
+    gridTemplateColumns: '1fr 1fr',
     gap: 14,
     marginBottom: 16,
   };
 
-  const authLabelStyle = {
-    display: 'grid',
-    gap: 8,
-  };
-
+  const authLabelStyle = { display: 'grid', gap: 8 };
   const authSpanStyle = {
     fontSize: 12,
     fontWeight: 800,
@@ -1205,137 +1130,67 @@ export default function Maintenance() {
           </div>
 
           <div style={authTabsStyle}>
-            <button
-              type="button"
-              style={authModeButton(authMode === 'login')}
-              onClick={() => setAuthMode('login')}
-            >
-              Đăng nhập
-            </button>
-            <button
-              type="button"
-              style={authModeButton(authMode === 'register')}
-              onClick={() => setAuthMode('register')}
-            >
-              Đăng ký
-            </button>
+            <button type="button" style={authModeButton(authMode === 'login')} onClick={() => setAuthMode('login')}>Đăng nhập</button>
+            <button type="button" style={authModeButton(authMode === 'register')} onClick={() => setAuthMode('register')}>Đăng ký</button>
           </div>
 
           {authMode === 'login' ? (
             <>
-              <div
-                style={{
-                  ...authGridStyle,
-                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                }}
-              >
+              <div style={authGridStyle}>
                 <label style={authLabelStyle}>
                   <span style={authSpanStyle}>Mã nhân viên</span>
-                  <input
-                    value={empCode}
-                    onChange={(e) => setEmpCode(e.target.value)}
-                    placeholder="VD: NV001"
-                    style={authInputStyle}
-                  />
+                  <input value={empCode} onChange={(e) => setEmpCode(e.target.value)} placeholder="VD: NV001" style={authInputStyle} />
                 </label>
-
                 <label style={authLabelStyle}>
                   <span style={authSpanStyle}>Mật khẩu kỹ thuật</span>
-                  <input
-                    value={mssv}
-                    onChange={(e) => setMssv(e.target.value)}
-                    type="password"
-                    placeholder="Nhập mật khẩu"
-                    style={authInputStyle}
-                  />
+                  <input value={mssv} onChange={(e) => setMssv(e.target.value)} type="password" placeholder="Nhập mật khẩu" style={authInputStyle} />
                 </label>
               </div>
 
               <div style={authActionsStyle}>
-                <button className="btn btn-primary" onClick={handleLogin}>
-                  Đăng nhập
-                </button>
-
-                {/* ===== DEMO_LOGIN_REMOVE_BEFORE_JETSON_START ===== */}
+                <button className="btn btn-primary" onClick={handleLogin}>Đăng nhập</button>
                 {ENABLE_DEV_DEMO_LOGIN ? (
                   <>
-                    <button className="btn btn-ghost" onClick={fillDemoCredentials}>
-                      Điền tài khoản demo
-                    </button>
-                    <button className="btn btn-ghost" onClick={loginWithDemoAccount}>
-                      Vào bằng demo
-                    </button>
+                    <button className="btn btn-ghost" onClick={fillDemoCredentials}>Điền tài khoản demo</button>
+                    <button className="btn btn-ghost" onClick={loginWithDemoAccount}>Vào bằng demo</button>
                   </>
                 ) : null}
-                {/* ===== DEMO_LOGIN_REMOVE_BEFORE_JETSON_END ===== */}
               </div>
 
-              {/* ===== DEMO_LOGIN_REMOVE_BEFORE_JETSON_START ===== */}
               {ENABLE_DEV_DEMO_LOGIN ? (
                 <div style={authNoteStyle}>
-                  Demo local Win11: <b>{DEV_DEMO_ACCOUNT.employee_code}</b> / <b>{DEV_DEMO_ACCOUNT.password}</b>.
-                  Trước khi build Jetson Nano, tìm chuỗi <b>DEMO_LOGIN_REMOVE_BEFORE_JETSON</b> để tắt hoặc xóa block này.
+                  Demo local Win11: <b>{DEV_DEMO_ACCOUNT.employee_code}</b> / <b>{DEV_DEMO_ACCOUNT.password}</b>. Trước khi build Jetson Nano, tìm chuỗi <b>DEMO_LOGIN_REMOVE_BEFORE_JETSON</b> để tắt hoặc xóa block này.
                 </div>
               ) : null}
-              {/* ===== DEMO_LOGIN_REMOVE_BEFORE_JETSON_END ===== */}
             </>
           ) : (
             <>
               <div style={authGridStyle}>
                 <label style={authLabelStyle}>
                   <span style={authSpanStyle}>Mã nhân viên</span>
-                  <input
-                    value={registerForm.employee_code}
-                    onChange={(e) => setRegisterForm((prev) => ({ ...prev, employee_code: e.target.value }))}
-                    placeholder="VD: NV010"
-                    style={authInputStyle}
-                  />
+                  <input value={registerForm.employee_code} onChange={(e) => setRegisterForm((prev) => ({ ...prev, employee_code: e.target.value }))} placeholder="VD: NV010" style={authInputStyle} />
                 </label>
-
                 <label style={authLabelStyle}>
                   <span style={authSpanStyle}>Họ tên</span>
-                  <input
-                    value={registerForm.full_name}
-                    onChange={(e) => setRegisterForm((prev) => ({ ...prev, full_name: e.target.value }))}
-                    placeholder="Nhập họ tên kỹ thuật viên"
-                    style={authInputStyle}
-                  />
+                  <input value={registerForm.full_name} onChange={(e) => setRegisterForm((prev) => ({ ...prev, full_name: e.target.value }))} placeholder="Nhập họ tên kỹ thuật viên" style={authInputStyle} />
                 </label>
-
                 <label style={authLabelStyle}>
                   <span style={authSpanStyle}>Mật khẩu</span>
-                  <input
-                    type="password"
-                    value={registerForm.password}
-                    onChange={(e) => setRegisterForm((prev) => ({ ...prev, password: e.target.value }))}
-                    placeholder="Nhập mật khẩu"
-                    style={authInputStyle}
-                  />
+                  <input type="password" value={registerForm.password} onChange={(e) => setRegisterForm((prev) => ({ ...prev, password: e.target.value }))} placeholder="Nhập mật khẩu" style={authInputStyle} />
                 </label>
-
                 <label style={authLabelStyle}>
                   <span style={authSpanStyle}>Phòng ban</span>
-                  <input
-                    value={registerForm.department}
-                    onChange={(e) => setRegisterForm((prev) => ({ ...prev, department: e.target.value }))}
-                    placeholder="VD: Trung tâm bảo trì"
-                    style={authInputStyle}
-                  />
+                  <input value={registerForm.department} onChange={(e) => setRegisterForm((prev) => ({ ...prev, department: e.target.value }))} placeholder="VD: Trung tâm bảo trì" style={authInputStyle} />
                 </label>
               </div>
 
               <div style={authActionsStyle}>
-                <button className="btn btn-primary" onClick={handleRegister}>
-                  Tạo tài khoản
-                </button>
-                <button className="btn btn-ghost" onClick={() => setAuthMode('login')}>
-                  Quay lại đăng nhập
-                </button>
+                <button className="btn btn-primary" onClick={handleRegister}>Tạo tài khoản</button>
+                <button className="btn btn-ghost" onClick={() => setAuthMode('login')}>Quay lại đăng nhập</button>
               </div>
 
               <div style={authNoteStyle}>
-                Bản Win11 có thể dùng đăng ký local để test giao diện. Khi backend <b>elevator_user</b> sẵn sàng,
-                chỉ cần thay nhánh local bằng API auth thật.
+                Bản Win11 có thể dùng đăng ký local để test giao diện. Khi backend <b>elevator_user</b> sẵn sàng, chỉ cần thay nhánh local bằng API auth thật.
               </div>
             </>
           )}
@@ -1351,14 +1206,12 @@ export default function Maintenance() {
         <div className="meta">Xin chào, {empCode || 'Kỹ thuật viên'} · {clock}</div>
       </div>
 
-      <section className="maint-top-grid">
-        <div className="card maint-camera-card">
+      <section className="maint-top-grid" style={{ alignItems: 'stretch' }}>
+        <div className="card maint-camera-card" style={{ minHeight: 590 }}>
           <div className="maint-card-head">
             <div>
               <h3>Live Camera &amp; CV Monitor</h3>
-              <div className="muted">
-                Camera thật từ CV service. Ẩn màn hình chỉ tác động UI, backend vẫn nhận diện và ghi dữ liệu.
-              </div>
+              <div className="muted">Camera thật từ CV service. Ẩn màn hình chỉ tác động UI, backend vẫn nhận diện và ghi dữ liệu.</div>
             </div>
           </div>
 
@@ -1370,44 +1223,33 @@ export default function Maintenance() {
             <span className="tag">FPS: {formatFps(cvStatus?.fps)}</span>
           </div>
 
-          <div className="camera-stage">
+          <div className="camera-stage" style={{ minHeight: 480 }}>
             {cameraVisible && streamUrl ? (
               <img src={streamUrl} alt="CV stream" className="camera-image-fill" />
             ) : (
               <div className="camera-placeholder-full">
                 <div className="camera-icon">🖥️</div>
-                <div className="camera-placeholder-title">
-                  {cameraVisible ? 'Chưa có luồng camera từ backend CV' : 'Màn hình camera đang được ẩn'}
-                </div>
-                <div className="camera-subnote">
-                  {cameraVisible
-                    ? 'Kiểm tra stream URL hoặc proxy MJPEG của backend chính.'
-                    : 'Camera backend vẫn chạy để nhận diện và ghi dữ liệu.'}
-                </div>
+                <div className="camera-placeholder-title">{cameraVisible ? 'Chưa có luồng camera từ backend CV' : 'Màn hình camera đang được ẩn'}</div>
+                <div className="camera-subnote">{cameraVisible ? 'Kiểm tra stream URL hoặc proxy MJPEG của backend chính.' : 'Camera backend vẫn chạy để nhận diện và ghi dữ liệu.'}</div>
               </div>
             )}
 
             <div className="camera-floating-actions">
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => setCameraVisible((v) => !v)}
-              >
+              <button className="btn btn-ghost btn-sm" onClick={() => setCameraVisible((v) => !v)}>
                 {cameraVisible ? 'Ẩn màn hình camera' : 'Bật màn hình camera'}
               </button>
-              <button className="btn btn-primary btn-sm" onClick={openRegisterFace}>
-                Đăng ký khuôn mặt
-              </button>
+              <button className="btn btn-primary btn-sm" onClick={openRegisterFace}>Đăng ký khuôn mặt</button>
             </div>
           </div>
         </div>
 
-        <div className="maint-side-rail-v3" style={{ gridTemplateRows: '1fr' }}>
-          <div className="card compact-health-card">
+        <div className="maint-side-rail-v3" style={{ minHeight: 590, height: '100%', gridTemplateRows: '1fr' }}>
+          <div className="card compact-health-card" style={{ height: '100%' }}>
             <div className="panel-title-row">
               <h3>Sức khỏe camera &amp; cấu hình</h3>
               <span className="tag">CV + LLM + USER</span>
             </div>
-            <div className="metric-health-grid">
+            <div className="metric-health-grid" style={{ flex: 1, alignContent: 'start' }}>
               {healthTiles.map((item) => (
                 <div key={item.label} className={`health-chip ${item.tone || ''}`}>
                   <span>{item.label}</span>
@@ -1419,13 +1261,13 @@ export default function Maintenance() {
         </div>
       </section>
 
-      <section className="maint-middle-grid">
-        <div className="card timeline-card">
+      <section className="maint-middle-grid" style={{ alignItems: 'stretch' }}>
+        <div className="card timeline-card" style={{ minHeight: 430, maxHeight: 430 }}>
           <div className="panel-title-row">
             <h3>Timeline sự kiện camera &amp; kỹ thuật</h3>
             <span className="tag">{timelineRows.length} mục gần nhất</span>
           </div>
-          <div className="table-shell">
+          <div className="table-shell" style={{ flex: 1, overflowY: 'auto', maxHeight: 340 }}>
             <table className="table timeline-table">
               <thead>
                 <tr>
@@ -1437,47 +1279,29 @@ export default function Maintenance() {
                 </tr>
               </thead>
               <tbody>
-                {timelineRows.length ? (
-                  timelineRows.map((event) => (
-                    <tr key={event.id}>
-                      <td>{event.time}</td>
-                      <td>{event.title}</td>
-                      <td>
-                        <span className={`event-badge ${event.severity}`}>
-                          {event.severity === 'error'
-                            ? 'LỖI'
-                            : event.severity === 'warn'
-                            ? 'WARN'
-                            : 'INFO'}
-                        </span>
-                      </td>
-                      <td>{event.location}</td>
-                      <td>{event.actor}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="5" className="empty-cell">
-                      Chưa có sự kiện camera gần đây.
-                    </td>
+                {timelineRows.length ? timelineRows.map((event) => (
+                  <tr key={event.id}>
+                    <td>{event.time}</td>
+                    <td>{event.title}</td>
+                    <td><span className={`event-badge ${event.severity}`}>{event.severity === 'error' ? 'LỖI' : event.severity === 'warn' ? 'WARN' : 'INFO'}</span></td>
+                    <td>{event.location}</td>
+                    <td>{event.actor}</td>
                   </tr>
+                )) : (
+                  <tr><td colSpan="5" className="empty-cell">Chưa có sự kiện camera gần đây.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         </div>
 
-        <div className="card llm-console-card">
+        <div className="card llm-console-card" style={{ minHeight: 430, maxHeight: 430 }}>
           <div className="llm-console-head">
             <div>
               <h3>Trợ lý bảo trì (LLM Console)</h3>
-              <div className="muted">
-                Debug agent, truy vết tool, xem memory và citations cho kỹ thuật viên.
-              </div>
+              <div className="muted">Debug agent, truy vết tool, xem memory và citations cho kỹ thuật viên.</div>
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={handleResetAgentSession}>
-              Phiên mới
-            </button>
+            <button className="btn btn-ghost btn-sm" onClick={handleResetAgentSession}>Phiên mới</button>
           </div>
 
           <div className="llm-console-meta">
@@ -1487,21 +1311,13 @@ export default function Maintenance() {
             </div>
             <div className="llm-meta-tags">
               {llmAgentData?.intent ? <span className="tag">Intent: {llmAgentData.intent}</span> : null}
-              {llmAgentData?.requires_human ? (
-                <span className="tag llm-warn">Cần handoff</span>
-              ) : null}
+              {llmAgentData?.requires_human ? <span className="tag llm-warn">Cần handoff</span> : null}
             </div>
           </div>
 
           <div className="llm-quick-grid">
             {QUICK_PROMPTS.map((prompt) => (
-              <button
-                key={prompt}
-                className="quick-prompt-btn"
-                onClick={() => setLlmInput(prompt)}
-              >
-                {prompt}
-              </button>
+              <button key={prompt} className="quick-prompt-btn" onClick={() => setLlmInput(prompt)}>{prompt}</button>
             ))}
           </div>
 
@@ -1521,9 +1337,7 @@ export default function Maintenance() {
                 padding: '12px 14px',
               }}
             />
-            <button className="btn btn-primary" onClick={runLLMQuery} disabled={llmBusy}>
-              {llmBusy ? 'Đang chạy...' : 'Gửi'}
-            </button>
+            <button className="btn btn-primary" onClick={runLLMQuery} disabled={llmBusy}>{llmBusy ? 'Đang chạy...' : 'Gửi'}</button>
           </div>
 
           {llmAgentData ? <AgentTracePanel data={llmAgentData} compact /> : null}
@@ -1534,9 +1348,7 @@ export default function Maintenance() {
         <div className="data-manager-head">
           <div>
             <h3>Quản lý dữ liệu &amp; Database</h3>
-            <div className="muted">
-              Hiển thị dữ liệu thật từ API nếu backend sẵn sàng. Fallback local cho Win11 test.
-            </div>
+            <div className="muted">Hiển thị dữ liệu thật từ API nếu backend sẵn sàng. Fallback local cho Win11 test.</div>
           </div>
           <span className="tag">{dataConnected ? 'Realtime API' : 'Fallback local'}</span>
         </div>
@@ -1554,13 +1366,7 @@ export default function Maintenance() {
               <div className="db-picker-title">Databases</div>
               <div className="db-chip-row">
                 {Object.keys(DATASET_OPTIONS).map((db) => (
-                  <button
-                    key={db}
-                    className={`db-chip ${selectedDb === db ? 'active' : ''}`}
-                    onClick={() => setSelectedDb(db)}
-                  >
-                    {db}
-                  </button>
+                  <button key={db} className={`db-chip ${selectedDb === db ? 'active' : ''}`} onClick={() => setSelectedDb(db)}>{db}</button>
                 ))}
               </div>
             </div>
@@ -1569,20 +1375,12 @@ export default function Maintenance() {
               <div className="db-picker-title">Tables</div>
               <div className="db-table-list">
                 {(tableOptions[selectedDb] || []).map((table) => (
-                  <button
-                    key={table}
-                    className={`db-table-item ${selectedTable === table ? 'active' : ''}`}
-                    onClick={() => setSelectedTable(table)}
-                  >
-                    {table}
-                  </button>
+                  <button key={table} className={`db-table-item ${selectedTable === table ? 'active' : ''}`} onClick={() => setSelectedTable(table)}>{table}</button>
                 ))}
               </div>
             </div>
 
-            <button className="btn btn-primary" onClick={() => handleDataAction('load')}>
-              Load / Refresh Table
-            </button>
+            <button className="btn btn-primary" onClick={() => handleDataAction('load')}>Load / Refresh Table</button>
           </div>
 
           <div className="db-right-panel">
@@ -1592,24 +1390,12 @@ export default function Maintenance() {
                 <div className="db-current-name">{selectedDb}.{selectedTable}</div>
               </div>
               <div className="db-action-row">
-                <button className="btn btn-ghost btn-sm" onClick={() => handleDataAction('add')}>
-                  Add Row
-                </button>
-                <button className="btn btn-ghost btn-sm" onClick={() => handleDataAction('delete')}>
-                  Delete Selected
-                </button>
-                <button className="btn btn-primary btn-sm" onClick={() => handleDataAction('save')}>
-                  Save Changes
-                </button>
-                <button className="btn btn-ghost btn-sm" onClick={() => handleDataAction('refresh')}>
-                  Refresh
-                </button>
-                <button className="btn btn-ghost btn-sm" onClick={handleExportCsv}>
-                  Lưu .csv
-                </button>
-                <button className="btn btn-ghost btn-sm" onClick={handleExportExcel}>
-                  Lưu .excel
-                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => handleDataAction('add')}>Add Row</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => handleDataAction('delete')}>Delete Selected</button>
+                <button className="btn btn-primary btn-sm" onClick={() => handleDataAction('save')}>Save Changes</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => handleDataAction('refresh')}>Refresh</button>
+                <button className="btn btn-ghost btn-sm" onClick={handleExportCsv}>Lưu .csv</button>
+                <button className="btn btn-ghost btn-sm" onClick={handleExportExcel}>Lưu .excel</button>
               </div>
             </div>
 
@@ -1623,28 +1409,18 @@ export default function Maintenance() {
                 </thead>
                 <tbody>
                   {dataLoading ? (
-                    <tr>
-                      <td colSpan={displayColumns.length + 1} className="empty-cell">
-                        Đang tải dữ liệu...
-                      </td>
-                    </tr>
+                    <tr><td colSpan={displayColumns.length + 1} className="empty-cell">Đang tải dữ liệu...</td></tr>
                   ) : tableRows.length ? (
                     tableRows.map((row, idx) => {
                       const rowId = getRowId(row, idx, primaryKeys);
                       return (
                         <tr key={rowId}>
                           <td>
-                            <input
-                              type="checkbox"
-                              checked={selectedRowIds.includes(rowId)}
-                              onChange={() => toggleDataRow(rowId)}
-                            />
+                            <input type="checkbox" checked={selectedRowIds.includes(rowId)} onChange={() => toggleDataRow(rowId)} />
                           </td>
                           {displayColumns.map((col) => (
                             <td key={`${rowId}-${col}`}>
-                              {dataReadOnly ? (
-                                row[col] ?? '--'
-                              ) : (
+                              {dataReadOnly ? row[col] ?? '--' : (
                                 <input
                                   value={row[col] ?? ''}
                                   onChange={(e) => handleCellChange(rowId, col, e.target.value)}
@@ -1665,41 +1441,27 @@ export default function Maintenance() {
                       );
                     })
                   ) : (
-                    <tr>
-                      <td colSpan={displayColumns.length + 1} className="empty-cell">
-                        Không có dữ liệu.
-                      </td>
-                    </tr>
+                    <tr><td colSpan={displayColumns.length + 1} className="empty-cell">Không có dữ liệu.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
 
             <div className="muted db-footer-note">
-              {selectedDb === 'elevator_cv'
-                ? 'Nếu backend giữ elevator_cv ở read-only thì UI sẽ chỉ xem, không ghi đè dữ liệu realtime.'
-                : 'Bảng LLM/USER có thể lưu local hoặc API thật tùy backend sẵn sàng.'}
+              {selectedDb === 'elevator_cv' ? 'Nếu backend giữ elevator_cv ở read-only thì UI sẽ chỉ xem, không ghi đè dữ liệu realtime.' : 'Bảng LLM/USER có thể lưu local hoặc API thật tùy backend sẵn sàng.'}
             </div>
           </div>
         </div>
       </section>
 
       <div className="maintenance-bottom-actions">
-        <button
-          className={`btn btn-ghost ${expandedPanel === 'density' ? 'active-inline-toggle' : ''}`}
-          onClick={() => setExpandedPanel((prev) => (prev === 'density' ? null : 'density'))}
-        >
+        <button className={`btn btn-ghost ${expandedPanel === 'density' ? 'active-inline-toggle' : ''}`} onClick={() => setExpandedPanel((prev) => (prev === 'density' ? null : 'density'))}>
           {expandedPanel === 'density' ? 'Ẩn mật độ người/ngày' : 'Mật độ người / ngày'}
         </button>
-        <button
-          className={`btn btn-ghost ${expandedPanel === 'locks' ? 'active-inline-toggle' : ''}`}
-          onClick={() => setExpandedPanel((prev) => (prev === 'locks' ? null : 'locks'))}
-        >
+        <button className={`btn btn-ghost ${expandedPanel === 'locks' ? 'active-inline-toggle' : ''}`} onClick={() => setExpandedPanel((prev) => (prev === 'locks' ? null : 'locks'))}>
           {expandedPanel === 'locks' ? 'Ẩn quản lý khóa tầng' : 'Quản lý khóa tầng'}
         </button>
-        <button className="btn btn-ghost" onClick={handleLogout}>
-          Đăng xuất
-        </button>
+        <button className="btn btn-ghost" onClick={handleLogout}>Đăng xuất</button>
       </div>
 
       {expandedPanel === 'density' && (
@@ -1711,9 +1473,7 @@ export default function Maintenance() {
             </div>
             <span className="tag">Cam: {cvStatus?.cam_id || 'cam_01'}</span>
           </div>
-
           <LineDensityChart items={densityData} />
-
           <div className="inline" style={{ marginTop: 10 }}>
             <span className="pill">Cam: {cvStatus?.cam_id || 'cam_01'}</span>
             <span className="pill">Dạng biểu đồ: Line chart trực quan</span>
@@ -1737,11 +1497,7 @@ export default function Maintenance() {
                   const locked = lockedFloors.includes(floor);
                   const selected = selectedFloor === floor;
                   return (
-                    <button
-                      key={floor}
-                      className={`floor-lock-tile ${locked ? 'locked' : 'unlocked'} ${selected ? 'selected' : ''}`}
-                      onClick={() => setSelectedFloor(floor)}
-                    >
+                    <button key={floor} className={`floor-lock-tile ${locked ? 'locked' : 'unlocked'} ${selected ? 'selected' : ''}`} onClick={() => setSelectedFloor(floor)}>
                       <span className="floor-lock-label">T{floor}</span>
                       <span className="floor-lock-state">{locked ? '🔒' : '🔓'}</span>
                     </button>
@@ -1752,78 +1508,34 @@ export default function Maintenance() {
               <div className="lock-details-card" style={{ marginTop: 14 }}>
                 <div className="lock-details-head">
                   <h4>Tầng {selectedFloor}</h4>
-                  <button className="btn btn-ghost btn-sm" onClick={() => toggleFloorLock(selectedFloor)}>
-                    {isSelectedFloorLocked ? 'Mở khóa tầng' : 'Khóa tầng'}
-                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => toggleFloorLock(selectedFloor)}>{isSelectedFloorLocked ? 'Mở khóa tầng' : 'Khóa tầng'}</button>
                 </div>
                 <div className="lock-status-line">
-                  <span className={`event-badge ${isSelectedFloorLocked ? 'warn' : 'info'}`}>
-                    {isSelectedFloorLocked ? 'Đang khóa' : 'Đang mở'}
-                  </span>
+                  <span className={`event-badge ${isSelectedFloorLocked ? 'warn' : 'info'}`}>{isSelectedFloorLocked ? 'Đang khóa' : 'Đang mở'}</span>
                 </div>
 
                 {isSelectedFloorLocked && (
                   <>
                     <div className="lock-auth-grid">
-                      <label className="lock-check">
-                        <input
-                          type="checkbox"
-                          checked={currentFloorCfg.pin ?? true}
-                          onChange={() => toggleAuthType(selectedFloor, 'pin')}
-                        />
-                        PIN
-                      </label>
-                      <label className="lock-check">
-                        <input
-                          type="checkbox"
-                          checked={currentFloorCfg.qr ?? false}
-                          onChange={() => toggleAuthType(selectedFloor, 'qr')}
-                        />
-                        QR code
-                      </label>
+                      <label className="lock-check"><input type="checkbox" checked={currentFloorCfg.pin ?? true} onChange={() => toggleAuthType(selectedFloor, 'pin')} />PIN</label>
+                      <label className="lock-check"><input type="checkbox" checked={currentFloorCfg.qr ?? false} onChange={() => toggleAuthType(selectedFloor, 'qr')} />QR code</label>
                     </div>
 
                     {(currentFloorCfg.pin ?? true) && (
                       <div className="lock-pin-box" style={{ marginBottom: 12 }}>
                         {editingPin ? (
                           <div className="lock-pin-edit-row">
-                            <input
-                              className="pin-inp"
-                              value={pinInput}
-                              onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                              placeholder="4 số"
-                              maxLength={4}
-                            />
+                            <input className="pin-inp" value={pinInput} onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="4 số" maxLength={4} />
                             <button className="btn btn-primary btn-sm" onClick={savePin}>Lưu PIN</button>
-                            <button
-                              className="btn btn-ghost btn-sm"
-                              onClick={() => {
-                                setEditingPin(false);
-                                setPinInput('');
-                              }}
-                            >
-                              Hủy
-                            </button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => { setEditingPin(false); setPinInput(''); }}>Hủy</button>
                           </div>
                         ) : (
                           <div className="lock-pin-display">
                             <div className="muted">PIN hiện tại</div>
                             <div className="lock-pin-value">{floorPins[selectedFloor] ? '****' : 'Chưa đặt PIN'}</div>
                             <div className="inline">
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                onClick={() => {
-                                  setEditingPin(true);
-                                  setPinInput(floorPins[selectedFloor] || '');
-                                }}
-                              >
-                                {floorPins[selectedFloor] ? 'Sửa PIN' : 'Đặt PIN'}
-                              </button>
-                              {floorPins[selectedFloor] ? (
-                                <button className="btn btn-ghost btn-sm" onClick={removePin}>
-                                  Xóa PIN
-                                </button>
-                              ) : null}
+                              <button className="btn btn-ghost btn-sm" onClick={() => { setEditingPin(true); setPinInput(floorPins[selectedFloor] || ''); }}>{floorPins[selectedFloor] ? 'Sửa PIN' : 'Đặt PIN'}</button>
+                              {floorPins[selectedFloor] ? <button className="btn btn-ghost btn-sm" onClick={removePin}>Xóa PIN</button> : null}
                             </div>
                           </div>
                         )}
@@ -1833,42 +1545,10 @@ export default function Maintenance() {
                     {(currentFloorCfg.qr ?? false) && (
                       <div className="lock-pin-box">
                         <div className="muted" style={{ marginBottom: 8 }}>Nhân viên được phép QR</div>
-                        <textarea
-                          value={qrEmployees}
-                          onChange={(e) => setQrEmployees(e.target.value)}
-                          rows={4}
-                          placeholder={'Mỗi dòng một mã nhân viên\nVD:\nNV001\nNV002'}
-                          style={{
-                            width: '100%',
-                            borderRadius: 12,
-                            padding: 12,
-                            background: 'rgba(255,255,255,0.04)',
-                            color: '#eef6ff',
-                            border: '1px solid rgba(122,167,255,0.14)',
-                            resize: 'vertical',
-                          }}
-                        />
+                        <textarea value={qrEmployees} onChange={(e) => setQrEmployees(e.target.value)} rows={4} placeholder={'Mỗi dòng một mã nhân viên\nVD:\nNV001\nNV002'} style={{ width: '100%', borderRadius: 12, padding: 12, background: 'rgba(255,255,255,0.04)', color: '#eef6ff', border: '1px solid rgba(122,167,255,0.14)', resize: 'vertical' }} />
                         <div className="muted" style={{ marginTop: 10, marginBottom: 8 }}>QR token được phép</div>
-                        <textarea
-                          value={qrTokens}
-                          onChange={(e) => setQrTokens(e.target.value)}
-                          rows={4}
-                          placeholder={'Mỗi dòng một token QR\nVD:\nQR_FLOOR_05_NV001'}
-                          style={{
-                            width: '100%',
-                            borderRadius: 12,
-                            padding: 12,
-                            background: 'rgba(255,255,255,0.04)',
-                            color: '#eef6ff',
-                            border: '1px solid rgba(122,167,255,0.14)',
-                            resize: 'vertical',
-                          }}
-                        />
-                        <div style={{ marginTop: 10 }}>
-                          <button className="btn btn-primary btn-sm" onClick={saveQrConfig}>
-                            Lưu cấu hình QR
-                          </button>
-                        </div>
+                        <textarea value={qrTokens} onChange={(e) => setQrTokens(e.target.value)} rows={4} placeholder={'Mỗi dòng một token QR\nVD:\nQR_FLOOR_05_NV001'} style={{ width: '100%', borderRadius: 12, padding: 12, background: 'rgba(255,255,255,0.04)', color: '#eef6ff', border: '1px solid rgba(122,167,255,0.14)', resize: 'vertical' }} />
+                        <div style={{ marginTop: 10 }}><button className="btn btn-primary btn-sm" onClick={saveQrConfig}>Lưu cấu hình QR</button></div>
                       </div>
                     )}
                   </>
@@ -1884,10 +1564,7 @@ export default function Maintenance() {
                 </div>
                 <div className="metric-compact-grid">
                   {summaryTiles.map((item) => (
-                    <div key={item.label} className="metric-card-small">
-                      <span>{item.label}</span>
-                      <strong>{item.value}</strong>
-                    </div>
+                    <div key={item.label} className="metric-card-small"><span>{item.label}</span><strong>{item.value}</strong></div>
                   ))}
                 </div>
               </div>
@@ -1898,22 +1575,10 @@ export default function Maintenance() {
                   <span className="tag">PIN + QR</span>
                 </div>
                 <div className="metric-compact-grid">
-                  <div className="metric-card-small">
-                    <span>Tầng đang chọn</span>
-                    <strong>T{selectedFloor}</strong>
-                  </div>
-                  <div className="metric-card-small">
-                    <span>Trạng thái</span>
-                    <strong>{isSelectedFloorLocked ? 'Đang khóa' : 'Đang mở'}</strong>
-                  </div>
-                  <div className="metric-card-small">
-                    <span>PIN</span>
-                    <strong>{currentFloorCfg.pin ? 'Bật' : 'Tắt'}</strong>
-                  </div>
-                  <div className="metric-card-small">
-                    <span>QR code</span>
-                    <strong>{currentFloorCfg.qr ? 'Bật' : 'Tắt'}</strong>
-                  </div>
+                  <div className="metric-card-small"><span>Tầng đang chọn</span><strong>T{selectedFloor}</strong></div>
+                  <div className="metric-card-small"><span>Trạng thái</span><strong>{isSelectedFloorLocked ? 'Đang khóa' : 'Đang mở'}</strong></div>
+                  <div className="metric-card-small"><span>PIN</span><strong>{currentFloorCfg.pin ? 'Bật' : 'Tắt'}</strong></div>
+                  <div className="metric-card-small"><span>QR code</span><strong>{currentFloorCfg.qr ? 'Bật' : 'Tắt'}</strong></div>
                 </div>
               </div>
             </div>
@@ -1927,13 +1592,9 @@ export default function Maintenance() {
             <div className="face-register-head">
               <div>
                 <h3>Đăng ký khuôn mặt nhân viên</h3>
-                <div className="muted">
-                  Dùng khi model phát hiện người nhưng chưa biết đó là ai.
-                </div>
+                <div className="muted">Dùng khi model phát hiện người nhưng chưa biết đó là ai.</div>
               </div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowFaceModal(false)}>
-                Đóng
-              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowFaceModal(false)}>Đóng</button>
             </div>
 
             <div className="face-register-candidate">
@@ -1945,55 +1606,32 @@ export default function Maintenance() {
                   <span>{unknownCandidate.location}</span>
                 </div>
               ) : (
-                <div className="face-candidate-box empty">
-                  Chưa có unknown person gần đây. Bạn vẫn có thể đăng ký thủ công.
-                </div>
+                <div className="face-candidate-box empty">Chưa có unknown person gần đây. Bạn vẫn có thể đăng ký thủ công.</div>
               )}
             </div>
 
             <div className="face-form-grid">
               <label>
                 <span>Mã nhân viên</span>
-                <input
-                  value={faceForm.employee_code}
-                  onChange={(e) => setFaceForm((prev) => ({ ...prev, employee_code: e.target.value }))}
-                  placeholder="VD: NV009"
-                />
+                <input value={faceForm.employee_code} onChange={(e) => setFaceForm((prev) => ({ ...prev, employee_code: e.target.value }))} placeholder="VD: NV009" />
               </label>
               <label>
                 <span>Họ tên</span>
-                <input
-                  value={faceForm.employee_name}
-                  onChange={(e) => setFaceForm((prev) => ({ ...prev, employee_name: e.target.value }))}
-                  placeholder="Nhập họ tên nhân viên"
-                />
+                <input value={faceForm.employee_name} onChange={(e) => setFaceForm((prev) => ({ ...prev, employee_name: e.target.value }))} placeholder="Nhập họ tên nhân viên" />
               </label>
               <label>
                 <span>Phòng ban</span>
-                <input
-                  value={faceForm.department}
-                  onChange={(e) => setFaceForm((prev) => ({ ...prev, department: e.target.value }))}
-                  placeholder="VD: Kỹ thuật / Bảo vệ"
-                />
+                <input value={faceForm.department} onChange={(e) => setFaceForm((prev) => ({ ...prev, department: e.target.value }))} placeholder="VD: Kỹ thuật / Bảo vệ" />
               </label>
               <label>
                 <span>Ghi chú</span>
-                <textarea
-                  value={faceForm.note}
-                  onChange={(e) => setFaceForm((prev) => ({ ...prev, note: e.target.value }))}
-                  placeholder="Ghi chú nhận dạng / ca trực / snapshot"
-                  rows={4}
-                />
+                <textarea value={faceForm.note} onChange={(e) => setFaceForm((prev) => ({ ...prev, note: e.target.value }))} placeholder="Ghi chú nhận dạng / ca trực / snapshot" rows={4} />
               </label>
             </div>
 
             <div className="face-register-actions">
-              <button className="btn btn-ghost" onClick={() => setShowFaceModal(false)}>
-                Hủy
-              </button>
-              <button className="btn btn-primary" onClick={handleRegisterFace} disabled={registerBusy}>
-                {registerBusy ? 'Đang gửi...' : 'Lưu đăng ký'}
-              </button>
+              <button className="btn btn-ghost" onClick={() => setShowFaceModal(false)}>Hủy</button>
+              <button className="btn btn-primary" onClick={handleRegisterFace} disabled={registerBusy}>{registerBusy ? 'Đang gửi...' : 'Lưu đăng ký'}</button>
             </div>
           </div>
         </div>
